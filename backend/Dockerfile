@@ -9,21 +9,19 @@ ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Asia/Shanghai
 
 # ---------------------------------------------------------------------------
-# apt 源换成阿里云镜像（Ubuntu 24.04 / noble 默认用 deb822 格式的
-# /etc/apt/sources.list.d/ubuntu.sources，不是老式 sources.list）
+# apt 源换成阿里云镜像。不依赖 sed 去改基础镜像自带的 sources 文件——Ubuntu
+# 24.04 官方镜像的默认源不一定是能直接文本替换的 http://archive.ubuntu.com
+# （新版可能用 mirror+file:/etc/apt/apt-mirrors.txt 之类的镜像列表间接跳转，
+# sed 匹配不上就静默什么也不改，构建时又走回未加速/不可达的源导致失败）。
+# 直接整份重写成阿里云源，格式、内容都完全可控。
 # ---------------------------------------------------------------------------
-RUN set -eux; \
-    if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then \
-        sed -i \
-            -e 's|http://archive.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g' \
-            -e 's|http://security.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g' \
-            /etc/apt/sources.list.d/ubuntu.sources; \
-    elif [ -f /etc/apt/sources.list ]; then \
-        sed -i \
-            -e 's|http://archive.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g' \
-            -e 's|http://security.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g' \
-            /etc/apt/sources.list; \
-    fi
+RUN rm -f /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list && \
+    { \
+        echo "deb https://mirrors.aliyun.com/ubuntu/ noble main restricted universe multiverse"; \
+        echo "deb https://mirrors.aliyun.com/ubuntu/ noble-updates main restricted universe multiverse"; \
+        echo "deb https://mirrors.aliyun.com/ubuntu/ noble-backports main restricted universe multiverse"; \
+        echo "deb https://mirrors.aliyun.com/ubuntu/ noble-security main restricted universe multiverse"; \
+    } > /etc/apt/sources.list
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3 python3-pip curl ca-certificates \

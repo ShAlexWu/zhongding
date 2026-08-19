@@ -140,7 +140,10 @@ set_env_var() {
 
 get_env_var() {
   [ -f "$ENV_FILE" ] || return 0
-  grep -E "^$1=" "$ENV_FILE" 2>/dev/null | tail -n1 | cut -d= -f2-
+  # key 在 .env 里还不存在时 grep 找不到匹配、以非 0 退出——这是正常情况（返回空
+  # 字符串即可），不是错误；但脚本开着 set -e -o pipefail，管道最后一个失败会
+  # 直接把整个脚本杀掉（且不打印任何提示）。用 || true 吞掉这个「没找到」的退出码。
+  grep -E "^$1=" "$ENV_FILE" 2>/dev/null | tail -n1 | cut -d= -f2- || true
 }
 
 # prompt_value KEY 提示文案 默认值 是否敏感(1隐藏/0明文)

@@ -47,6 +47,19 @@ app.mount(
     StaticFiles(directory=config.DIAGRAMS_DIR),
     name="diagrams",
 )
+# 原始 PDF 图纸 + 用户上传原图：供排名列表悬浮预览「上传图片 vs 原始 PDF」使用。
+# check_dir=False：这两个目录属于后加的功能，部署环境里可能还没建好/挂载卷，
+# 缺了不应该导致整个后端启动失败，缺目录时对应请求走 404 即可。
+app.mount(
+    "/static/pdfs",
+    StaticFiles(directory=config.PDFS_DIR, check_dir=False),
+    name="pdfs",
+)
+app.mount(
+    "/static/upload",
+    StaticFiles(directory=config.UPLOAD_DIR, check_dir=False),
+    name="upload",
+)
 
 
 class MatchRequest(BaseModel):
@@ -81,6 +94,20 @@ def list_diagrams():
     finally:
         conn.close()
     return {"diagrams": diagrams}
+
+
+@app.get("/api/pdf_diagrams")
+def list_pdf_diagrams():
+    """返回「212份图纸」目录下实际存在 PDF 的图纸名集合。
+
+    知识库里的图纸不是每一张都配了原始 PDF（212/241），前端排名列表悬浮预览
+    「上传图片 vs 原始 PDF」时，靠这份名单判断某一行要不要显示 PDF 预览、
+    还是显示「暂无 PDF」，不用逐行发请求去试。
+    """
+    names = []
+    if os.path.isdir(config.PDFS_DIR):
+        names = sorted(n for n in os.listdir(config.PDFS_DIR) if n.lower().endswith(".pdf"))
+    return {"diagrams": names}
 
 
 @app.post("/api/extract_field")

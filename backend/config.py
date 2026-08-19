@@ -17,6 +17,10 @@ FRAGMENTS_DIR = os.path.join(PROJECT_ROOT, "片段")
 # 的部分重复、且全部在 图纸_old/ 也有，没有任何独有内容），指向 图纸/ 会导致
 # 绝大多数匹配结果（约 220/241 张）在 /static/diagrams 下 404、原始图片显示不出来。
 DIAGRAMS_DIR = os.path.join(PROJECT_ROOT, "图纸_old")
+# 原始图纸 PDF 目录（用于「排名列表悬浮预览：上传图片 vs 原始 PDF」）
+PDFS_DIR = os.path.join(PROJECT_ROOT, "212份图纸")
+# 用户上传原图目录
+UPLOAD_DIR = os.path.join(PROJECT_ROOT, "upload")
 
 # ---------------------------------------------------------------------------
 # DashScope（百炼）模型配置

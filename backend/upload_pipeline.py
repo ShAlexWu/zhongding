@@ -258,6 +258,13 @@ def _pump_scores(gen):
     return scores, timings
 
 
+def _upload_image_name(xxx: str):
+    """本次 XXX 对应的原始上传图片文件名（相对 upload/ 目录）；
+    不存在则返回 None（复用旧片段但从未真正走过上传接口的边缘情况）。"""
+    path = os.path.join(config.UPLOAD_DIR, f"{xxx}.png")
+    return f"{xxx}.png" if os.path.isfile(path) else None
+
+
 def _run_graphic_match(
     iw: float, tw: float, xxx: str, extra_timings: dict = None
 ) -> Iterator[dict]:
@@ -280,11 +287,12 @@ def _run_graphic_match(
         "similarity_func": "cosine_similarity",
         "ranking": _ranked(scores),
         "top": _ranked(scores)[0] if scores else None,
+        "upload_image": _upload_image_name(xxx),
         "stage_timings": stage_timings,
     }
 
 
-def _run_text_match(md_text: str, extra_timings: dict = None) -> Iterator[dict]:
+def _run_text_match(md_text: str, xxx: str, extra_timings: dict = None) -> Iterator[dict]:
     """文本模式：流式产出逐图纸比对进度，最后产出 result 事件（含各阶段耗时）。"""
     scores, timings = yield from _pump_scores(matcher.iter_match_text(md_text))
     stage_timings = {**(extra_timings or {}), **timings}
@@ -296,6 +304,7 @@ def _run_text_match(md_text: str, extra_timings: dict = None) -> Iterator[dict]:
         "source_text": md_text,
         "ranking": _ranked(scores),
         "top": _ranked(scores)[0] if scores else None,
+        "upload_image": _upload_image_name(xxx),
         "stage_timings": stage_timings,
     }
 
@@ -334,7 +343,7 @@ def process(
             with open(existing_md, "r", encoding="utf-8") as f:
                 md_text = normalize_latex_math(f.read())
             yield {"type": "progress", "msg": "在 view_text_vec 中检索最相似图纸…"}
-            yield from _run_text_match(md_text)
+            yield from _run_text_match(md_text, xxx)
             return
 
         # ---- 无可复用产物：保存上传、QWEN 判模式、重新生成 ----
@@ -375,6 +384,6 @@ def process(
             with open(md_path, "w", encoding="utf-8") as f:
                 f.write(md_text)
             yield {"type": "progress", "msg": "在 view_text_vec 中检索最相似图纸…"}
-            yield from _run_text_match(md_text, extra_timings={"vlm_interpret": vlm_secs})
+            yield from _run_text_match(md_text, xxx, extra_timings={"vlm_interpret": vlm_secs})
     except Exception as e:  # noqa: BLE001
         yield {"type": "error", "msg": str(e)}

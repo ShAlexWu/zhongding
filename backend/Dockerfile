@@ -61,9 +61,9 @@ COPY 模版文件.docx ./模版文件.docx
 
 RUN uv sync --frozen
 
-# 图纸/片段/上传/生成结果等数据目录不打进镜像，运行时用 volume 挂载
+# 图纸/片段/上传/生成结果/原始 PDF 等数据目录不打进镜像，运行时用 volume 挂载
 # （见 docker-compose.yml），这里只建好空目录避免首次挂载前路径缺失报错。
-RUN mkdir -p /app/图纸_old /app/片段 /app/upload /app/outputs
+RUN mkdir -p /app/图纸_old /app/片段 /app/upload /app/outputs "/app/212份图纸"
 
 WORKDIR /app/backend
 

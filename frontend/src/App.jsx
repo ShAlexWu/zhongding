@@ -18,7 +18,15 @@ function MatchingPage() {
   const [stageTimings, setStageTimings] = useState(null) // 各阶段耗时（匹配完成后才有）
   const [result, setResult] = useState(null)
   const [error, setError] = useState('')
+  const [pdfDiagrams, setPdfDiagrams] = useState(() => new Set()) // 有原始 PDF 的图纸名集合
   const logRef = useRef(null)
+
+  useEffect(() => {
+    fetch('/api/pdf_diagrams')
+      .then((r) => r.json())
+      .then((d) => setPdfDiagrams(new Set(d.diagrams || [])))
+      .catch(() => {})
+  }, [])
 
   function appendLog(line) {
     setLogs((prev) => {
@@ -206,8 +214,8 @@ function MatchingPage() {
         </div>
       )}
 
-      {result && result.mode === 'graphic' && <GraphicResult result={result} />}
-      {result && result.mode === 'text' && <TextResult result={result} />}
+      {result && result.mode === 'graphic' && <GraphicResult result={result} pdfDiagrams={pdfDiagrams} />}
+      {result && result.mode === 'text' && <TextResult result={result} pdfDiagrams={pdfDiagrams} />}
     </div>
   )
 }
@@ -557,8 +565,9 @@ function InspectionDocPage() {
   )
 }
 
-function GraphicResult({ result }) {
+function GraphicResult({ result, pdfDiagrams }) {
   const top = result.top
+  const uploadImage = result.upload_image
   return (
     <div className="result">
       <div className="meta">
@@ -569,7 +578,16 @@ function GraphicResult({ result }) {
       {top && (
         <div className="top-card">
           <div className="top-head">
-            <h2>最相似图纸：{top.diagram_name}</h2>
+            <h2>
+              最相似图纸：
+              <DiagramHoverPreview
+                diagramName={top.diagram_name}
+                uploadImage={uploadImage}
+                hasPdf={pdfDiagrams.has(top.diagram_name)}
+              >
+                {top.diagram_name}
+              </DiagramHoverPreview>
+            </h2>
             <span className="composite-score">
               综合得分：{top.composite.toFixed(4)}
             </span>
@@ -622,20 +640,32 @@ function GraphicResult({ result }) {
           r.text_component.toFixed(4),
           <b key="c">{r.composite.toFixed(4)}</b>,
         ]}
+        uploadImage={uploadImage}
+        pdfDiagrams={pdfDiagrams}
       />
     </div>
   )
 }
 
-function TextResult({ result }) {
+function TextResult({ result, pdfDiagrams }) {
   const top = result.top
+  const uploadImage = result.upload_image
   return (
     <div className="result">
       <div className="meta">文本模式（仅文本维度）｜相似度函数：{result.similarity_func}</div>
 
       {top && (
         <div className="top-card">
-          <h2>最相似图纸：{top.diagram_name}</h2>
+          <h2>
+            最相似图纸：
+            <DiagramHoverPreview
+              diagramName={top.diagram_name}
+              uploadImage={uploadImage}
+              hasPdf={pdfDiagrams.has(top.diagram_name)}
+            >
+              {top.diagram_name}
+            </DiagramHoverPreview>
+          </h2>
           <div>文本相似度：{top.similarity.toFixed(4)}</div>
           <h3>上传文本 ↔ 图纸文本</h3>
           <div className="pair-list">
@@ -653,6 +683,8 @@ function TextResult({ result }) {
         ranking={result.ranking}
         cols={['最相似分段', '文本相似度']}
         cells={(r) => [r.best_chunk_name, <b key="s">{r.similarity.toFixed(4)}</b>]}
+        uploadImage={uploadImage}
+        pdfDiagrams={pdfDiagrams}
       />
     </div>
   )
@@ -737,7 +769,76 @@ function TextPair({ head, sim, left, right }) {
   )
 }
 
-function RankTable({ ranking, cols, cells }) {
+// 悬浮在图纸名称上时，弹出「上传图片 vs 原始 PDF」并排预览面板。
+// uploadImage 为空（复用旧片段但从未真正走过上传接口）时退化为纯文本、不提供悬浮。
+const HOVER_PANEL_W = 960
+const HOVER_PANEL_H = 560
+
+function DiagramHoverPreview({ diagramName, uploadImage, hasPdf, children }) {
+  const [hover, setHover] = useState(false)
+  const [box, setBox] = useState({ top: 0, left: 0, width: HOVER_PANEL_W, height: HOVER_PANEL_H })
+  const ref = useRef(null)
+
+  function handleEnter() {
+    if (ref.current) {
+      const rect = ref.current.getBoundingClientRect()
+      // 面板尺寸也按视口裁一遍：窗口比面板本身还小时（较小的浏览器窗口/分屏）
+      // 只调整 position 不够，还得把面板本身缩小，否则会溢出视口。
+      const width = Math.min(HOVER_PANEL_W, window.innerWidth - 24)
+      const height = Math.min(HOVER_PANEL_H, window.innerHeight - 24)
+      let left = rect.left
+      left = Math.min(left, window.innerWidth - width - 12)
+      left = Math.max(12, left)
+      let top = rect.bottom + 6
+      if (top + height > window.innerHeight - 12) {
+        top = Math.max(12, rect.top - height - 6) // 下方放不下就翻到上方
+      }
+      setBox({ top, left, width, height })
+    }
+    setHover(true)
+  }
+
+  if (!uploadImage) return <>{children}</>
+
+  return (
+    <span
+      ref={ref}
+      className="diagram-hover-trigger"
+      onMouseEnter={handleEnter}
+      onMouseLeave={() => setHover(false)}
+    >
+      {children}
+      {hover && (
+        <div
+          className="diagram-hover-panel"
+          style={{ top: box.top, left: box.left, width: box.width, height: box.height }}
+        >
+          <div className="diagram-hover-col diagram-hover-col-upload">
+            <div className="diagram-hover-label">上传图片</div>
+            <div className="diagram-hover-body">
+              <img src={`/static/upload/${uploadImage}`} alt="上传图片" />
+            </div>
+          </div>
+          <div className="diagram-hover-col diagram-hover-col-pdf">
+            <div className="diagram-hover-label">原始图纸：{diagramName}</div>
+            <div className="diagram-hover-body">
+              {hasPdf ? (
+                <iframe
+                  title={diagramName}
+                  src={`/static/pdfs/${diagramName}#toolbar=0&navpanes=0&view=FitH`}
+                />
+              ) : (
+                <div className="diagram-hover-nopdf">暂无该图纸的 PDF 文件</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </span>
+  )
+}
+
+function RankTable({ ranking, cols, cells, uploadImage, pdfDiagrams }) {
   return (
     <>
       <h2>排名（Top {ranking.length}）</h2>
@@ -755,7 +856,15 @@ function RankTable({ ranking, cols, cells }) {
           {ranking.map((r) => (
             <tr key={r.diagram_name}>
               <td>{r.rank}</td>
-              <td>{r.diagram_name}</td>
+              <td>
+                <DiagramHoverPreview
+                  diagramName={r.diagram_name}
+                  uploadImage={uploadImage}
+                  hasPdf={pdfDiagrams.has(r.diagram_name)}
+                >
+                  {r.diagram_name}
+                </DiagramHoverPreview>
+              </td>
               {cells(r).map((v, i) => (
                 <td key={i}>{v}</td>
               ))}

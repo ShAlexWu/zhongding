@@ -818,3 +818,68 @@ h1 {
   font-size: 13px;
   margin: 10px 0 4px;
 }
+
+/* 排名列表悬浮预览：图纸名称上方一条虚线下划线提示可悬浮，
+   悬浮时弹出「上传图片 vs 原始 PDF」并排面板（position: fixed，坐标由 JS 算好传入） */
+.diagram-hover-trigger {
+  border-bottom: 1px dotted #8c959f;
+  cursor: help;
+}
+.diagram-hover-panel {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  gap: 1px;
+  background: #d0d7de;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.diagram-hover-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+}
+/* 左边上传的局部图片小一点，右边原始 PDF 大一点，更符合「参考 vs 主体」的视觉习惯 */
+.diagram-hover-col-upload {
+  flex: 2;
+}
+.diagram-hover-col-pdf {
+  flex: 3;
+}
+.diagram-hover-label {
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #57606a;
+  background: #f6f8fa;
+  border-bottom: 1px solid #d0d7de;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.diagram-hover-body {
+  flex: 1;
+  min-height: 0;
+}
+.diagram-hover-body img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #fff;
+}
+.diagram-hover-body iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+.diagram-hover-nopdf {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #8c959f;
+  font-size: 13px;
+}

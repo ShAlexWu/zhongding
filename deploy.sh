@@ -193,7 +193,7 @@ fi
 # ------------------------------------------------------------
 # 4. 数据目录（volume 挂载点）确保存在，避免 compose 用 root 建目录导致权限问题
 # ------------------------------------------------------------
-mkdir -p "$SCRIPT_DIR/图纸_old" "$SCRIPT_DIR/片段" "$SCRIPT_DIR/upload" "$SCRIPT_DIR/outputs"
+mkdir -p "$SCRIPT_DIR/图纸_old" "$SCRIPT_DIR/片段" "$SCRIPT_DIR/upload" "$SCRIPT_DIR/outputs" "$SCRIPT_DIR/212份图纸"
 
 # ------------------------------------------------------------
 # 5. 构建并启动

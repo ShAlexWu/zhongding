@@ -63,9 +63,9 @@ RUN mkdir -p /app/图纸_old /app/片段 /app/upload /app/outputs
 
 WORKDIR /app/backend
 
-EXPOSE 50002
+EXPOSE 50011
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl -fsS http://127.0.0.1:50002/health || exit 1
+    CMD curl -fsS http://127.0.0.1:50011/health || exit 1
 
-CMD ["/app/.venv/bin/uvicorn", "app:app", "--host", "0.0.0.0", "--port", "50002"]
+CMD ["/app/.venv/bin/uvicorn", "app:app", "--host", "0.0.0.0", "--port", "50011"]

@@ -7,7 +7,7 @@
 #      并配置国内镜像加速器；已装好则跳过。
 #   2. 交互式收集 .env 里的各项配置（含密钥），写入项目根目录 .env
 #      （已在 .gitignore 中，不会被提交）。
-#   3. docker compose build + up，起前端（对外 8001）与后端两个容器。
+#   3. docker compose build + up，起前端（对外 8004）与后端两个容器。
 #
 #  用法：
 #    sudo ./deploy.sh          构建并启动
@@ -21,7 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 ENV_FILE="$SCRIPT_DIR/.env"
-HOST_PORT=8001
+HOST_PORT=8004
 
 log()  { echo "[deploy.sh] $*"; }
 warn() { echo "[deploy.sh][WARN] $*"; }

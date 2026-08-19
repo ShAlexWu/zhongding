@@ -2,8 +2,8 @@
 # 用法见 deploy.sh；直接用也可以：
 #   docker compose build && docker compose up -d
 #
-# 架构：宿主机只对外开放一个端口（8001）→ frontend 容器（nginx, 监听 50001）；
-# frontend 反代 /api、/health、/static 到 backend 容器（uvicorn, 监听 50002，
+# 架构：宿主机只对外开放一个端口（8004）→ frontend 容器（nginx, 监听 50009）；
+# frontend 反代 /api、/health、/static 到 backend 容器（uvicorn, 监听 50011，
 # 不对宿主机开放，只在 compose 内部网络里可达）。
 
 services:
@@ -20,7 +20,7 @@ services:
       - ./upload:/app/upload
       - ./outputs:/app/outputs
     expose:
-      - "50002"
+      - "50011"
     restart: unless-stopped
     networks:
       - zhongding-net
@@ -31,7 +31,7 @@ services:
       dockerfile: Dockerfile
     container_name: zhongding-frontend
     ports:
-      - "8001:50001"
+      - "8004:50009"
     depends_on:
       - backend
     restart: unless-stopped

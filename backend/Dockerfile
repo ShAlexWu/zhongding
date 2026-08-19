@@ -14,13 +14,19 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # （新版可能用 mirror+file:/etc/apt/apt-mirrors.txt 之类的镜像列表间接跳转，
 # sed 匹配不上就静默什么也不改，构建时又走回未加速/不可达的源导致失败）。
 # 直接整份重写成阿里云源，格式、内容都完全可控。
+#
+# 用 http 不用 https：这一步是全新容器里第一次装包，ca-certificates 本身
+# 还没装（就在下面这条 apt-get install 里才装），这时候 apt 走 https 会因为
+# 证书链验证不了而全部 Failed to fetch（先有鸡还是先有蛋的问题）。apt 的完整
+# 性靠 Release 文件的 GPG 签名保证，不依赖传输层 TLS，用 http 是官方镜像站
+# 通用的标准做法，不是安全降级。
 # ---------------------------------------------------------------------------
 RUN rm -f /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list && \
     { \
-        echo "deb https://mirrors.aliyun.com/ubuntu/ noble main restricted universe multiverse"; \
-        echo "deb https://mirrors.aliyun.com/ubuntu/ noble-updates main restricted universe multiverse"; \
-        echo "deb https://mirrors.aliyun.com/ubuntu/ noble-backports main restricted universe multiverse"; \
-        echo "deb https://mirrors.aliyun.com/ubuntu/ noble-security main restricted universe multiverse"; \
+        echo "deb http://mirrors.aliyun.com/ubuntu/ noble main restricted universe multiverse"; \
+        echo "deb http://mirrors.aliyun.com/ubuntu/ noble-updates main restricted universe multiverse"; \
+        echo "deb http://mirrors.aliyun.com/ubuntu/ noble-backports main restricted universe multiverse"; \
+        echo "deb http://mirrors.aliyun.com/ubuntu/ noble-security main restricted universe multiverse"; \
     } > /etc/apt/sources.list
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

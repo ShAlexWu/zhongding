@@ -235,7 +235,9 @@ def _pump_scores(gen):
 
     - {"timing": {...}} → 不下发给前端，累积进本函数汇总返回的计时字典；
     - {"start": n, "total": t} → match_start（前端据此创建 n 个线程窗口）；
-    - {"worker": k, "msg": ...} → 带 worker 的 progress（路由到第 k 个窗口）。
+    - {"worker": k, "msg": ...} → 带 worker 的 progress（路由到第 k 个窗口）；
+    - {"msg": ...}（无 worker，如向量化阶段逐项进度）→ 不带 worker 的 progress，
+      前端走通用日志区展示（复用 App.jsx 里本来就支持的「无 worker」分支）。
     生成器结束时通过 StopIteration.value 取回 (排序后的 scores 列表, 计时字典)。"""
     scores = []
     timings = {}
@@ -249,8 +251,10 @@ def _pump_scores(gen):
             timings.update(item["timing"])
         elif "start" in item:
             yield {"type": "match_start", "workers": item["start"], "total": item["total"]}
-        else:
+        elif "worker" in item:
             yield {"type": "progress", "worker": item["worker"], "msg": item["msg"]}
+        else:
+            yield {"type": "progress", "msg": item["msg"]}
     return scores, timings
 
 

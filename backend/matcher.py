@@ -81,36 +81,62 @@ def _find_markdown(fragment_dir: str) -> Optional[str]:
     return None
 
 
+def iter_embed_fragment(
+    fragment_dir: str,
+    images_dir: Optional[str] = None,
+    md_path: Optional[str] = None,
+) -> Iterator[dict]:
+    """流式版 embed_fragment：逐张图片、逐个分段 yield 向量化进度文案
+    （{"msg": ...}，无 worker 字段，走串行日志而非并行通道），生成器结束时
+    通过 return 返回 FragmentInput。
+
+    DashScope 的 embedding 调用有实打实的网络耗时（实测单个片段 3 张图 + 3 段
+    文本约 3 秒），之前是整段悄悄跑完才一次性继续，页面上会有几秒钟看起来像
+    「卡住了」；现在逐项汇报进度，体验上更接近真·流式。
+    """
+    image_vecs: List[Tuple[str, str, List[float]]] = []
+    images_dir = images_dir or _find_images_dir(fragment_dir)
+    names = []
+    if images_dir:
+        names = sorted(
+            n for n in os.listdir(images_dir) if n.lower().endswith(config.IMAGE_EXTENSIONS)
+        )
+    for i, name in enumerate(names, 1):
+        yield {"msg": f"向量化局部图片 {i}/{len(names)}：{name}…"}
+        path = os.path.join(images_dir, name)
+        rel = os.path.relpath(path, config.FRAGMENTS_DIR).replace("\\", "/")
+        image_vecs.append((name, rel, embedding_client.embed_image(path)))
+
+    chunk_vecs: List[Tuple[str, str, List[float]]] = []
+    md_path = md_path or _find_markdown(fragment_dir)
+    chunks = []
+    if md_path:
+        with open(md_path, "r", encoding="utf-8") as f:
+            chunks = chunk_by_image_anchor(f.read())
+    for i, chunk in enumerate(chunks, 1):
+        yield {"msg": f"向量化文本分段 {i}/{len(chunks)}：{chunk.name}…"}
+        chunk_vecs.append((chunk.name, chunk.text, embedding_client.embed_text(chunk.text)))
+
+    return FragmentInput(image_vecs=image_vecs, chunk_vecs=chunk_vecs)
+
+
 def embed_fragment(
     fragment_dir: str,
     images_dir: Optional[str] = None,
     md_path: Optional[str] = None,
 ) -> FragmentInput:
-    """对片段的图片和 md 分段进行向量化。
+    """对片段的图片和 md 分段进行向量化（非流式封装，供不需要进度回报的调用方使用，
+    如 perf_mo_search.py）。
 
     可显式指定 images_dir / md_path 以精确锁定某个片段（片段目录可能同时
     存在多个零件的产物）；未指定时回退为在 fragment_dir 下自动查找。
     """
-    image_vecs: List[Tuple[str, str, List[float]]] = []
-    images_dir = images_dir or _find_images_dir(fragment_dir)
-    if images_dir:
-        for name in sorted(os.listdir(images_dir)):
-            if name.lower().endswith(config.IMAGE_EXTENSIONS):
-                path = os.path.join(images_dir, name)
-                rel = os.path.relpath(path, config.FRAGMENTS_DIR).replace("\\", "/")
-                image_vecs.append((name, rel, embedding_client.embed_image(path)))
-
-    chunk_vecs: List[Tuple[str, str, List[float]]] = []
-    md_path = md_path or _find_markdown(fragment_dir)
-    if md_path:
-        with open(md_path, "r", encoding="utf-8") as f:
-            chunks = chunk_by_image_anchor(f.read())
-        for chunk in chunks:
-            chunk_vecs.append(
-                (chunk.name, chunk.text, embedding_client.embed_text(chunk.text))
-            )
-
-    return FragmentInput(image_vecs=image_vecs, chunk_vecs=chunk_vecs)
+    gen = iter_embed_fragment(fragment_dir, images_dir=images_dir, md_path=md_path)
+    try:
+        while True:
+            next(gen)
+    except StopIteration as e:
+        return e.value
 
 
 # --------------------------- MO 相似度检索 ----------------------------------
@@ -316,7 +342,7 @@ def iter_match(
         config.TEXT_WEIGHT = text_weight
 
     t0 = time.perf_counter()
-    frag = embed_fragment(fragment_dir, images_dir=images_dir, md_path=md_path)
+    frag = yield from iter_embed_fragment(fragment_dir, images_dir=images_dir, md_path=md_path)
     yield {"timing": {"vectorize": time.perf_counter() - t0}}
 
     conn = mo_db.connect()
@@ -373,6 +399,7 @@ def iter_match_text(md_text: str) -> Iterator[str]:
     拆开重排——逐行匹配会被换行/排版结构差异带偏（同族零件的技术要求文字几乎
     相同，谁的换行更接近片段谁就虚高），整体向量反而更稳、更贴合分段口径。
     """
+    yield {"msg": "向量化上传文本…"}
     t0 = time.perf_counter()
     whole_vec = embedding_client.embed_text(md_text)
     yield {"timing": {"vectorize": time.perf_counter() - t0}}

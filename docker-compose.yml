@@ -1,0 +1,43 @@
+# 图纸相似度匹配系统 - Docker 部署编排。
+# 用法见 deploy.sh；直接用也可以：
+#   docker compose build && docker compose up -d
+#
+# 架构：宿主机只对外开放一个端口（8001）→ frontend 容器（nginx, 监听 50001）；
+# frontend 反代 /api、/health、/static 到 backend 容器（uvicorn, 监听 50002，
+# 不对宿主机开放，只在 compose 内部网络里可达）。
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: zhongding-backend
+    env_file:
+      - .env
+    volumes:
+      - ./图纸_old:/app/图纸_old
+      - ./片段:/app/片段
+      - ./upload:/app/upload
+      - ./outputs:/app/outputs
+    expose:
+      - "50002"
+    restart: unless-stopped
+    networks:
+      - zhongding-net
+
+  frontend:
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+    container_name: zhongding-frontend
+    ports:
+      - "8001:50001"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - zhongding-net
+
+networks:
+  zhongding-net:
+    driver: bridge

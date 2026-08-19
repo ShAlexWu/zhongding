@@ -1,0 +1,142 @@
+# -*- coding: utf-8 -*-
+"""Markdown 分段工具（图纸知识库构建侧）。
+
+分段规则（对应 Prompt.md 需求第 3 条，与「AI 匹配之图形模式」第 3 步完全一致）：
+- 依次找到 md 中每一个图片链接；
+- 对每个链接：向上找到最靠近的标题（任意层级）作为锚定标题；
+- 该分段 = 从锚定标题到「下一个同级或更高级标题」之前的全部内容，
+  其中不包含图片链接文本；分段名称取该锚定标题的文字（如「加工视图 1：主视图」）。
+
+要点：
+- 文件标题（唯一的最高一级标题 `#`，对应整页渲染图）不作为锚点，不产出分段，
+  否则会产生一个覆盖全文、与各视图分段重叠的巨型分段。
+- 不含图片链接的小节不会成为分段（因为没有可锚定的图片链接）。
+- 若多个图片链接锚定到同一个标题，只产出一个分段，避免该段被重复计权。
+
+注意：本文件的分段逻辑必须与 backend/markdown_chunker.py 保持一致，
+两侧（知识库构建 / 匹配查询）使用相同规则，文本相似度才在同一尺度上可比。
+"""
+
+import re
+from typing import List, NamedTuple
+
+# 形如 "## 标题" 的 ATX 标题
+HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
+# 整行只有一个图片链接： ![alt](path)
+IMAGE_LINE_RE = re.compile(r"^\s*!\[[^\]]*\]\([^)]*\)\s*$")
+# 行内的图片链接（用于剔除夹在文字中的图片）
+INLINE_IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+
+
+class Chunk(NamedTuple):
+    name: str   # 分段名称（锚定标题文本）
+    text: str   # 分段正文（已去除图片链接）
+
+
+def _parse_headings(lines: List[str]):
+    """返回 [(行号, 层级, 标题文本)]，按行号升序。"""
+    result = []
+    for i, line in enumerate(lines):
+        m = HEADING_RE.match(line)
+        if m:
+            result.append((i, len(m.group(1)), m.group(2).strip()))
+    return result
+
+
+def _strip_images(text_lines: List[str]) -> str:
+    """去掉图片链接后拼接为正文文本。"""
+    kept = []
+    for line in text_lines:
+        if IMAGE_LINE_RE.match(line):
+            continue
+        # 去掉行内可能存在的图片链接
+        line = INLINE_IMAGE_RE.sub("", line)
+        kept.append(line)
+    text = "\n".join(kept).strip()
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text
+
+
+def _nearest_heading_above(headings, img_line: int):
+    """返回图片链接所在行之上、最靠近的标题；没有则返回 None。"""
+    anchor = None
+    for h in headings:               # headings 已按行号升序
+        if h[0] < img_line:
+            anchor = h
+        else:
+            break
+    return anchor
+
+
+def _section_end(headings, anchor_line: int, level: int):
+    """锚定标题之后、第一个层级 <= 锚定层级的标题行号（即分段结束边界）。"""
+    for h in headings:
+        if h[0] > anchor_line and h[1] <= level:
+            return h[0]
+    return None
+
+
+def _doc_title_line(headings):
+    """唯一的最高一级标题视为文件标题（对应整页渲染图），不作为分段锚点。
+
+    仅当最浅层级在全文只出现一次时，认定其为文件标题；否则返回 None。
+    """
+    levels = [lvl for _, lvl, _ in headings]
+    top = min(levels)
+    if levels.count(top) != 1:
+        return None
+    return next(ln for ln, lvl, _ in headings if lvl == top)
+
+
+def chunk_markdown(md_text: str) -> List[Chunk]:
+    """按「图片锚定」规则把 markdown 文本分段。"""
+    lines = md_text.splitlines()
+    headings = _parse_headings(lines)
+    if not headings:
+        return []
+
+    title_line = _doc_title_line(headings)
+    image_lines = [i for i, line in enumerate(lines) if IMAGE_LINE_RE.match(line)]
+
+    chunks: List[Chunk] = []
+    seen_anchor = set()
+    for img_line in image_lines:
+        anchor = _nearest_heading_above(headings, img_line)
+        if anchor is None:
+            continue
+        anchor_line, level, title = anchor
+        # 文件标题（整页渲染图所在小节）不分段
+        if anchor_line == title_line:
+            continue
+        # 多个图片锚定同一标题时，只产出一次
+        if anchor_line in seen_anchor:
+            continue
+        seen_anchor.add(anchor_line)
+
+        end = _section_end(headings, anchor_line, level)
+        if end is None:
+            end = len(lines)
+
+        body = _strip_images(lines[anchor_line + 1:end])
+        if not body:
+            continue
+        # 锚定标题文本并入正文，提供语义上下文
+        chunk_text = f"{title}\n{body}".strip()
+        chunks.append(Chunk(name=title, text=chunk_text))
+
+    return chunks
+
+
+if __name__ == "__main__":
+    # 简单自测：打印分段结果
+    import sys
+
+    path = sys.argv[1]
+    with open(path, "r", encoding="utf-8") as f:
+        content = f.read()
+    result = chunk_markdown(content)
+    print(f"分段数：{len(result)}\n")
+    for c in result:
+        print("=" * 60)
+        print("CHUNK:", c.name)
+        print(c.text)

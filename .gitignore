@@ -1,0 +1,18 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# start.sh runtime logs/pids, local secrets
+.run/
+.env
+
+# Node
+frontend/node_modules/
+

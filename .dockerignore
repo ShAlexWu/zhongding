@@ -1,0 +1,40 @@
+# 后端镜像的构建上下文是项目根目录（需要根目录的 pyproject.toml / uv.lock）。
+# 这里排除所有数据/参考资料/开发态大目录，避免发给 Docker daemon 的构建上下文
+# 体积过大——这些目录本来就该用 docker-compose 的 volume 挂载，不打进镜像。
+
+.git
+.claude
+.venv
+.run
+.DS_Store
+*.pyc
+__pycache__/
+
+# 数据目录：运行时用 volume 挂载（见 docker-compose.yml），不打进镜像
+图纸/
+图纸_old/
+片段/
+使用过的片段/
+局部图片/
+upload/
+outputs/
+
+# 开发态/参考资料，容器不需要
+我的 Codex 解析的 PDF/
+download_parsed_result_from_moi/
+knowledge_construct/
+SampleCode/
+*.doc
+模版文件_旧.doc
+Prompt.md
+MO 创建向量数据表和查询.md
+README.md
+start.bat
+start.sh
+main.py
+
+# 前端（后端镜像不需要；前端镜像的构建上下文是 frontend/ 自己，见 frontend/.dockerignore）
+frontend/
+
+# 秘钥：不进镜像，运行时通过 docker-compose env_file 注入
+.env

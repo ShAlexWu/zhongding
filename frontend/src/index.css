@@ -1,0 +1,9 @@
+:root {
+  font: 16px/1.5 system-ui, "Segoe UI", "Microsoft YaHei", Roboto, sans-serif;
+  color: #1f2328;
+  background: #fff;
+}
+
+body {
+  margin: 0;
+}

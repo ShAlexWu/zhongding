@@ -182,9 +182,15 @@ prompt_value MO_PASSWORD "MO_PASSWORD" "" 1
 prompt_value MO_DB       "MO_DB" "zhongding" 0
 prompt_value MO_CHARSET  "MO_CHARSET" "utf8mb4" 0
 echo ""
+prompt_value USER_NAME "USER_NAME（页面登录用户名，直接回车则不启用登录鉴权）" "" 1
+prompt_value PASSWORD  "PASSWORD（页面登录密码，直接回车则不启用登录鉴权）" "" 1
+echo ""
 
 if [ -z "$(get_env_var DASHSCOPE_API_KEY)" ]; then
   warn "DASHSCOPE_API_KEY 未设置：图片/文本向量化及 QWEN 解析将不可用。"
+fi
+if [ -z "$(get_env_var USER_NAME)" ] || [ -z "$(get_env_var PASSWORD)" ]; then
+  warn "USER_NAME/PASSWORD 未设置：页面将不要求登录即可直接使用。"
 fi
 if [ -z "$(get_env_var MO_PASSWORD)" ]; then
   warn "MO_PASSWORD 未设置：后端将无法连接 MatrixOne，图纸检索/匹配会失败。"
@@ -193,7 +199,8 @@ fi
 # ------------------------------------------------------------
 # 4. 数据目录（volume 挂载点）确保存在，避免 compose 用 root 建目录导致权限问题
 # ------------------------------------------------------------
-mkdir -p "$SCRIPT_DIR/图纸_old" "$SCRIPT_DIR/片段" "$SCRIPT_DIR/upload" "$SCRIPT_DIR/outputs" "$SCRIPT_DIR/212份图纸"
+mkdir -p "$SCRIPT_DIR/图纸_old" "$SCRIPT_DIR/片段" "$SCRIPT_DIR/upload" "$SCRIPT_DIR/outputs" \
+  "$SCRIPT_DIR/212份图纸" "$SCRIPT_DIR/局部图片/密封件"
 
 # ------------------------------------------------------------
 # 5. 构建并启动

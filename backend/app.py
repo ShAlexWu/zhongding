@@ -13,12 +13,13 @@ import json
 import os
 from typing import List, Optional
 
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import auth
 import config
 import doc_generator
 import field_extractor
@@ -35,6 +36,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 登录鉴权：/api/ 下除登录/查会话/健康检查外，一律要求带有效 session cookie。
+# .env 没配 USER_NAME/PASSWORD 时 auth.is_valid 恒真，相当于鉴权关闭。
+_AUTH_PUBLIC_PATHS = {"/api/login", "/api/session", "/api/health", "/health"}
+
+
+@app.middleware("http")
+async def _auth_guard(request: Request, call_next):
+    path = request.url.path
+    if path.startswith("/api/") and path not in _AUTH_PUBLIC_PATHS:
+        if not auth.is_valid(request.cookies.get(auth.COOKIE_NAME)):
+            return JSONResponse({"detail": "未登录或登录已过期"}, status_code=401)
+    return await call_next(request)
 
 # 静态托管片段与图纸图片，供前端展示缩略图
 app.mount(
@@ -60,12 +74,46 @@ app.mount(
     StaticFiles(directory=config.UPLOAD_DIR, check_dir=False),
     name="upload",
 )
+# 「使用说明」页样例数据下载
+app.mount(
+    "/static/samples",
+    StaticFiles(directory=config.SAMPLES_DIR, check_dir=False),
+    name="samples",
+)
 
 
 class MatchRequest(BaseModel):
     # 预留：页面可配置权重；不传则用默认 0.7 / 0.3
     image_weight: Optional[float] = None
     text_weight: Optional[float] = None
+
+
+# ---------------------------------------------------------------------------
+# 登录 / 登出 / 会话查询
+# ---------------------------------------------------------------------------
+
+@app.post("/api/login")
+def login(response: Response, username: str = Form(...), password: str = Form(...)):
+    if not auth.verify_credentials(username, password):
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+    token = auth.create_session()
+    response.set_cookie(
+        auth.COOKIE_NAME, token,
+        httponly=True, samesite="lax", max_age=auth.SESSION_TTL_SECONDS,
+    )
+    return {"ok": True}
+
+
+@app.post("/api/logout")
+def logout(request: Request, response: Response):
+    auth.revoke(request.cookies.get(auth.COOKIE_NAME))
+    response.delete_cookie(auth.COOKIE_NAME)
+    return {"ok": True}
+
+
+@app.get("/api/session")
+def session_status(request: Request):
+    return {"authenticated": auth.is_valid(request.cookies.get(auth.COOKIE_NAME))}
 
 
 def _score_to_dict(rank: int, s: matcher.DiagramScore) -> dict:
@@ -202,19 +250,17 @@ async def upload(
     file: UploadFile = File(...),
     image_weight: float = Form(config.IMAGE_WEIGHT),
     text_weight: float = Form(config.TEXT_WEIGHT),
-    deep_parse: bool = Form(False),
 ):
     """上传图片 → 清空片段 → QWEN 判模式 → 图形/文本模式 → 匹配。
 
-    含图形的解析：默认走 PaddleOCR-VL + QWEN；deep_parse=True「深度解读」走 Codex。
-    以 SSE 流式返回处理进度与最终结果。
+    含图形的解析：走 PaddleOCR-VL + QWEN。以 SSE 流式返回处理进度与最终结果。
     """
     file_bytes = await file.read()
     orig_name = file.filename or "upload.png"
 
     def event_stream():
         for event in upload_pipeline.process(
-            file_bytes, orig_name, image_weight, text_weight, deep_parse
+            file_bytes, orig_name, image_weight, text_weight
         ):
             yield _sse(event)
 

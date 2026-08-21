@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
-"""「基础解读」解析通道：PaddleOCR-VL（云 API 裁切视图）+ QWEN（逐视图解读）。
+"""解析通道：PaddleOCR-VL（云 API 裁切视图）+ QWEN（逐视图解读）。
 
-与 upload_pipeline.run_codex_stream 接口一致：generator，逐行 yield 进度文案；
-产物结构与 Codex 完全相同，以便下游匹配逻辑零改动复用：
+generator，逐行 yield 进度文案；产物结构：
     片段/XXX_extracted.md           （# 文件标题 + 每个 "## 视图 N" 分段）
     片段/XXX_assets/images/<裁切图>
 
@@ -137,7 +136,7 @@ def _reset_fragment(xxx: str) -> str:
 
 
 def run_basic_parse_stream(xxx: str) -> Iterator[str]:
-    """以 PaddleOCR-VL + QWEN 解析 upload/XXX.png，产出与 Codex 同构的片段产物。
+    """以 PaddleOCR-VL + QWEN 解析 upload/XXX.png，产出片段产物。
 
     生成器结束时 return 一个计时字典 {"paddle_crop": 秒, "vlm_interpret": 秒}，
     供 upload_pipeline 汇总「各阶段耗时」展示给前端（调用方用 StopIteration.value 取回）。

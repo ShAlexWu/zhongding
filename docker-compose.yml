@@ -20,6 +20,7 @@ services:
       - ./upload:/app/upload
       - ./outputs:/app/outputs
       - ./212份图纸:/app/212份图纸
+      - ./局部图片:/app/局部图片
     expose:
       - "50011"
     restart: unless-stopped

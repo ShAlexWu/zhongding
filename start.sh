@@ -111,6 +111,14 @@ prompt_secret "PADDLEOCR_KEY" \
   "请输入 PADDLEOCR_KEY（PaddleOCR-VL 云 API Token，直接回车跳过）: " \
   "「基础解读」通道（PaddleOCR-VL 裁切视图）将不可用。"
 
+# 登录账号：不填则关闭登录鉴权（谁都能直接用）
+prompt_secret "USER_NAME" \
+  "请输入 USER_NAME（页面登录用户名，直接回车则不启用登录鉴权）: " \
+  "未设置登录账号，页面将不要求登录即可直接使用。"
+prompt_secret "PASSWORD" \
+  "请输入 PASSWORD（页面登录密码，直接回车则不启用登录鉴权）: " \
+  "未设置登录密码，页面将不要求登录即可直接使用。"
+
 # uv 首次 `uv sync` 会从 GitHub Releases 下载托管的 Python 解释器
 # （python-build-standalone），国内网络访问 GitHub Releases 经常很慢/超时。
 # 这里默认换成阿里云 npmmirror 的镜像，可用 .env / 环境变量覆盖。

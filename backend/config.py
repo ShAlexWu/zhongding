@@ -21,6 +21,14 @@ DIAGRAMS_DIR = os.path.join(PROJECT_ROOT, "图纸_old")
 PDFS_DIR = os.path.join(PROJECT_ROOT, "212份图纸")
 # 用户上传原图目录
 UPLOAD_DIR = os.path.join(PROJECT_ROOT, "upload")
+# 使用说明页「样例数据下载」目录
+SAMPLES_DIR = os.path.join(PROJECT_ROOT, "局部图片", "密封件")
+
+# ---------------------------------------------------------------------------
+# 登录账号（轻量级：单账号、无注册、不落库，纯读 .env）
+# ---------------------------------------------------------------------------
+AUTH_USERNAME = os.getenv("USER_NAME", "")
+AUTH_PASSWORD = os.getenv("PASSWORD", "")
 
 # ---------------------------------------------------------------------------
 # DashScope（百炼）模型配置

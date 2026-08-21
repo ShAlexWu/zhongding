@@ -10,7 +10,6 @@ function pct(x) {
 function MatchingPage() {
   const [file, setFile] = useState(null)
   const [imageWeight, setImageWeight] = useState(50) // 0-100，文本权重=100-该值
-  const [deepParse, setDeepParse] = useState(false) // 深度解读：勾选则含图形走 Codex，默认走 PaddleOCR+QWEN
   const [running, setRunning] = useState(false)
   const [logs, setLogs] = useState([]) // 通用/串行思考过程（无 worker 的 progress）
   const [mode, setMode] = useState('')
@@ -55,7 +54,6 @@ function MatchingPage() {
     fd.append('file', file)
     fd.append('image_weight', String(imageWeight / 100))
     fd.append('text_weight', String((100 - imageWeight) / 100))
-    fd.append('deep_parse', String(deepParse))
 
     try {
       const resp = await fetch('/api/upload', { method: 'POST', body: fd })
@@ -165,23 +163,6 @@ function MatchingPage() {
             disabled={running}
           />
         </div>
-        <span className="deep-parse-group">
-          <label className="deep-parse">
-            <input
-              type="checkbox"
-              checked={deepParse}
-              onChange={(e) => setDeepParse(e.target.checked)}
-              disabled={running}
-            />
-            深度解读
-          </label>
-          <span
-            className="help-icon tip"
-            data-tip="更加精准的解读和匹配，但耗时较长"
-          >
-            ?
-          </span>
-        </span>
         <button className="search-btn" onClick={handleUpload} disabled={running}>
           {running ? '处理中…' : '上传并匹配'}
         </button>
@@ -220,10 +201,118 @@ function MatchingPage() {
   )
 }
 
+// 页面顶部品牌区：标题 + 副标题；登录后额外带一个退出登录按钮
+function AppBrand({ onLogout }) {
+  return (
+    <div className="app-brand">
+      <div className="app-brand-titles">
+        <h1 className="app-title">图纸智能应用智能体</h1>
+        <div className="app-subtitle">由 Matrix Origin 矩阵起源 AI 数智平台生成</div>
+      </div>
+      {onLogout && (
+        <button className="logout-btn" onClick={onLogout}>
+          退出登录
+        </button>
+      )}
+    </div>
+  )
+}
+
+function LoginPage({ onLoggedIn }) {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    if (!username || !password) {
+      setError('请输入用户名和密码')
+      return
+    }
+    setLoading(true)
+    setError('')
+    try {
+      const fd = new FormData()
+      fd.append('username', username)
+      fd.append('password', password)
+      const resp = await fetch('/api/login', { method: 'POST', body: fd })
+      if (!resp.ok) {
+        const j = await resp.json().catch(() => ({}))
+        throw new Error(j.detail || `登录失败（HTTP ${resp.status}）`)
+      }
+      onLoggedIn()
+    } catch (e) {
+      setError(String(e.message || e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="login-page">
+      <div className="login-card">
+        <AppBrand />
+        <form className="login-form" onSubmit={handleSubmit}>
+          <label>
+            用户名
+            <input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoFocus
+              disabled={loading}
+            />
+          </label>
+          <label>
+            密码
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={loading}
+            />
+          </label>
+          {error && <div className="error">{error}</div>}
+          <button type="submit" className="search-btn" disabled={loading}>
+            {loading ? '登录中…' : '登录'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
+  // 'loading'：正在查会话状态；'in'：已登录；'out'：未登录，展示登录页
+  const [authState, setAuthState] = useState('loading')
   const [activeTab, setActiveTab] = useState('match')
+
+  useEffect(() => {
+    fetch('/api/session')
+      .then((r) => r.json())
+      .then((d) => setAuthState(d.authenticated ? 'in' : 'out'))
+      .catch(() => setAuthState('out'))
+  }, [])
+
+  async function handleLogout() {
+    try {
+      await fetch('/api/logout', { method: 'POST' })
+    } catch {
+      // 忽略：即便请求失败，前端也直接切回登录页
+    }
+    setAuthState('out')
+  }
+
+  if (authState === 'loading') {
+    return <div className="page app-loading">加载中…</div>
+  }
+  if (authState === 'out') {
+    return <LoginPage onLoggedIn={() => setAuthState('in')} />
+  }
+
   return (
     <div className="page">
+      <AppBrand onLogout={handleLogout} />
       <div className="tabs">
         <button
           className={`tab ${activeTab === 'match' ? 'active' : ''}`}
@@ -237,14 +326,83 @@ export default function App() {
         >
           文档生成 - 生产检验指导书
         </button>
+        <button
+          className={`tab ${activeTab === 'guide' ? 'active' : ''}`}
+          onClick={() => setActiveTab('guide')}
+        >
+          使用说明
+        </button>
       </div>
-      {/* 两个页面都保持挂载，仅切换显隐：切标签不丢失各自的状态与进行中的任务 */}
+      {/* 三个页面都保持挂载，仅切换显隐：切标签不丢失各自的状态与进行中的任务 */}
       <div style={{ display: activeTab === 'match' ? 'block' : 'none' }}>
         <MatchingPage />
       </div>
       <div style={{ display: activeTab === 'doc' ? 'block' : 'none' }}>
         <InspectionDocPage />
       </div>
+      <div style={{ display: activeTab === 'guide' ? 'block' : 'none' }}>
+        <UsageGuidePage />
+      </div>
+    </div>
+  )
+}
+
+const SAMPLE_FILES = ['20C114582-Y.png', '20C114257-Y.png', '20C114820-Y.png']
+
+function UsageGuidePage() {
+  return (
+    <div className="guide-page">
+      <section className="guide-section">
+        <h2>功能概览</h2>
+        <ul className="guide-list">
+          <li>
+            <b>图纸检索</b>：上传一张局部零件图片（或技术参数图片），系统分别从"图形相似性"和"文本语义接近度"两个维度，
+            在图纸知识库中检索最相似的图纸，给出排名前 3 的候选结果，并实时展示 AI 逐图纸比对的完整思考过程与各阶段耗时；
+            排名列表中鼠标悬浮在图纸名称上，还能弹出「上传图片 vs 原始 PDF」并排预览，方便核对。
+          </li>
+          <li>
+            <b>文档生成</b>：选择一张已入库的图纸，AI 基于图纸的解析内容，按可编辑的抽取规则自动识别产品信息与检验项目，
+            组装成结构化数据供人工核对/修改，确认后一键套用模版生成《制品半成品检验作业指导书》Word 文档。
+          </li>
+        </ul>
+      </section>
+
+      <section className="guide-section">
+        <h2>使用步骤</h2>
+        <div className="guide-subsection">
+          <h3>图纸检索</h3>
+          <ol>
+            <li>登录后进入"图纸检索"标签页。</li>
+            <li>点击选择文件，上传一张局部零件图片（支持 png/jpg/jpeg/bmp）。</li>
+            <li>按需拖动滑块调整"图片权重／文本权重"，决定两个维度在综合得分中的占比。</li>
+            <li>点击"上传并匹配"，页面会实时展示 AI 思考过程（判定模式、向量化进度、并行比对通道）。</li>
+            <li>匹配完成后查看排名前 3 的图纸；鼠标悬浮在图纸名称上可弹出并排预览面板。</li>
+          </ol>
+        </div>
+        <div className="guide-subsection">
+          <h3>文档生成</h3>
+          <ol>
+            <li>切换到"文档生成 - 生产检验指导书"标签页。</li>
+            <li>从下拉框中选择目标图纸，可展开"信息提取规则"按需调整抽取逻辑。</li>
+            <li>点击"内容识别"，等待 AI 抽取完成。</li>
+            <li>在下方预览表格中逐项核对/修改抽取结果，勾选要插入文档的产品图片。</li>
+            <li>点击"生成文档"，浏览器会自动下载生成好的 .docx 文件。</li>
+          </ol>
+        </div>
+      </section>
+
+      <section className="guide-section">
+        <h2>样例数据下载</h2>
+        <p className="hint">可以下载下面几张局部零件图片，直接用于"图纸检索"功能的试用。</p>
+        <div className="sample-list">
+          {SAMPLE_FILES.map((name) => (
+            <a key={name} className="sample-item" href={`/static/samples/${name}`} download={name}>
+              <img src={`/static/samples/${name}`} alt={name} loading="lazy" />
+              <span>{name}</span>
+            </a>
+          ))}
+        </div>
+      </section>
     </div>
   )
 }

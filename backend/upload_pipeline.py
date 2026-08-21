@@ -11,8 +11,6 @@ import dataclasses
 import io
 import os
 import re
-import shutil
-import subprocess
 import time
 from typing import Iterator, Tuple
 
@@ -24,27 +22,6 @@ import matcher
 import qwen_client
 
 TOP_N = 3
-
-# 用户在 Prompt.md 第 24 行给出的 codex 解析 prompt（逐字使用，仅替换 XXX）
-CODEX_PROMPT_TEMPLATE = (
-    "对文件 upload\\{xxx}.png 进行内容识别，"
-    "1、基于零件的每一个加工视图做裁切（如果只有一个视图，则不需要截取，取整个视图即可），"
-    "并对每个视图中信息(尺寸、弧度)进行提取和对含义进行说明和解读，"
-    "要求把裁切的图片也嵌入到 Markdown 文件中（采用 UTF-8 编码），并放在对应的位置，"
-    "即裁切图片要和其被提取的内容在同一个文档区域；"
-    "请先将 PDF 渲染为整页 PNG，再按每个加工视图、剖面视图、局部视图、表格、NOTES、标题栏分别裁切。"
-    "裁切后必须检查每张图片是否包含完整尺寸线和文字；如果有边缘文字被裁掉，必须重裁，"
-    "如果带入了其他视图中的片段（如：尺寸），要严格区分归属，"
-    "只能提取当前视图中的内容到对应的文档区域，禁止混杂；"
-    "如果裁切后的内容没有图形，只有文字，直接丢弃；"
-    "2、表格、文本都要精准还原和提取；3、需要严格还原原图的结构，不做主观整理；"
-    "3、最终生成 '片段\\{xxx}_extracted.md' 和 '片段\\{xxx}_assets\\images\\';"
-    "4、禁止把整页 PNG 放在 Markdown 文件中；"
-    "5、禁止把整页 PNG 放在 images 子目录中；"
-    "6、不要探测或使用 ImageMagick/magick；"
-    "7、不要探测或使用 tesseract/OCR 命令行工具；"
-    "8、图像尺寸读取、裁切、保存固定使用 Python + Pillow(PIL)，不要调用 magick identify/convert"
-)
 
 
 def _sanitize_basename(orig_name: str) -> str:
@@ -125,75 +102,6 @@ def _existing_subdir(xxx: str):
     return None
 
 
-def _codex_executable() -> str:
-    return shutil.which("codex") or "codex"
-
-
-# AI 思考过程里会带出底层工具的特征信息，推送到前端前先过滤：
-# - "model:" 之后的内容统一改为 Auto
-# - "provider:" 之后的内容统一改为 Auto
-# - 文案中所有 Codex（不区分大小写）一律去除
-# - 文案中所有 chatgpt（不区分大小写）替换为 innerrouter
-# - 含 OpenAI 或 SandBox（不区分大小写）的行，整行屏蔽不输出
-_MODEL_LINE_RE = re.compile(r"(model\s*:\s*).*", re.IGNORECASE)
-_PROVIDER_LINE_RE = re.compile(r"(provider\s*:\s*).*", re.IGNORECASE)
-_CODEX_WORD_RE = re.compile(r"codex", re.IGNORECASE)
-_CHATGPT_WORD_RE = re.compile(r"chatgpt", re.IGNORECASE)
-_BLOCKED_LINE_RE = re.compile(r"openai|sandbox", re.IGNORECASE)
-
-
-def _sanitize_codex_line(line: str) -> str:
-    """过滤掉 codex 的特征属性后，返回可安全展示的文案。"""
-    line = _MODEL_LINE_RE.sub(r"\1Auto", line)
-    line = _PROVIDER_LINE_RE.sub(r"\1Auto", line)
-    line = _CODEX_WORD_RE.sub("", line)
-    line = _CHATGPT_WORD_RE.sub("innerrouter", line)
-    return line
-
-
-def run_codex_stream(xxx: str) -> Iterator[str]:
-    """以项目根为 cwd 运行 codex 解析命令，逐行产出 stdout。
-
-    生成器结束时 return 一个计时字典 {"parse": 秒}（Codex 是「深度解读」通道，
-    切图与解读一体完成，不像 PaddleOCR+QWEN 那样能拆成两段，故只汇总一个耗时，
-    上游 process() 会把它计入「VLM 解读内容」阶段）。
-    """
-    prompt = CODEX_PROMPT_TEMPLATE.format(xxx=xxx)
-    cmd = [
-        _codex_executable(),
-        "--dangerously-bypass-approvals-and-sandbox",
-        "exec",
-        "--skip-git-repo-check",
-        prompt,
-    ]
-    t0 = time.perf_counter()
-    proc = subprocess.Popen(
-        cmd,
-        cwd=config.PROJECT_ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        bufsize=1,
-    )
-    try:
-        for line in proc.stdout:
-            line = line.rstrip("\n")
-            # 含 OpenAI / SandBox 的行整行屏蔽，不推送到前端
-            if _BLOCKED_LINE_RE.search(line):
-                continue
-            line = _sanitize_codex_line(line)
-            if line.strip():
-                yield line
-    finally:
-        proc.stdout.close()
-        code = proc.wait()
-        if code != 0:
-            raise RuntimeError(f"codex 退出码 {code}")
-    return {"parse": time.perf_counter() - t0}
-
-
 def _xxx_images_dir(xxx: str):
     """定位片段中 XXX 子目录下的 images 目录。"""
     subdir = _existing_subdir(xxx)
@@ -215,9 +123,9 @@ def _ranked(scores) -> list:
 
 
 def _pump_parse(gen):
-    """驱动「逐行 yield 解析进度文案」的生成器（basic_parser / codex 解析通道）：
+    """驱动「逐行 yield 解析进度文案」的生成器（basic_parser 解析通道）：
     把每行转成 progress 事件；生成器结束时通过 StopIteration.value 取回其
-    计时字典（如 {"paddle_crop": 秒, "vlm_interpret": 秒} 或 {"parse": 秒}）。
+    计时字典（{"paddle_crop": 秒, "vlm_interpret": 秒}）。
     """
     timings = {}
     while True:
@@ -311,7 +219,6 @@ def _run_text_match(md_text: str, xxx: str, extra_timings: dict = None) -> Itera
 
 def process(
     file_bytes: bytes, orig_name: str, iw: float, tw: float,
-    deep_parse: bool = False,
 ) -> Iterator[dict]:
     """完整处理流程，逐阶段产出事件。
 
@@ -319,8 +226,8 @@ def process(
     - 片段目录已有 XXX「子目录 + md」 → 图形模式复用（跳过 QWEN 与解析）；
     - 片段目录已有 XXX「md」（无子目录）→ 文本模式复用（跳过 QWEN 与解析）；
     - 都没有 → 调 QWEN 判模式后只生成本次 XXX 的产物：
-        含图形 → 解析（默认走 PaddleOCR+QWEN；deep_parse=True「深度解读」走 Codex）；
-        纯文本 → 写 md（不受 deep_parse 影响）。
+        含图形 → 走 PaddleOCR+QWEN 解析；
+        纯文本 → 写 md。
     全程不删除片段目录下任何已有解析结果（匹配按 XXX 精确锁定产物）。
     """
     try:
@@ -359,19 +266,13 @@ def process(
 
         if is_graphic:
             yield {"type": "mode", "mode": "graphic"}
-            if deep_parse:
-                yield {"type": "progress", "msg": "判定：含图形 → 图形模式（深度解读）。运行 【图文双模式】 解析（可能耗时数分钟）…"}
-                parse_stream = run_codex_stream(xxx)
-            else:
-                yield {"type": "progress", "msg": "判定：含图形 → 图形模式，进行解析…"}
-                parse_stream = basic_parser.run_basic_parse_stream(xxx)
+            yield {"type": "progress", "msg": "判定：含图形 → 图形模式，进行解析…"}
+            parse_stream = basic_parser.run_basic_parse_stream(xxx)
             parse_timings = yield from _pump_parse(parse_stream)
             extra_timings = {
-                "vlm_interpret": vlm_secs
-                + parse_timings.get("vlm_interpret", parse_timings.get("parse", 0.0)),
+                "vlm_interpret": vlm_secs + parse_timings.get("vlm_interpret", 0.0),
             }
             if "paddle_crop" in parse_timings:
-                # Codex（深度解读）切图与解读一体完成，没有独立的 paddle_crop 阶段
                 extra_timings["paddle_crop"] = parse_timings["paddle_crop"]
             yield {"type": "progress", "msg": "开始图片+文本双维相似度匹配…"}
             yield from _run_graphic_match(iw, tw, xxx, extra_timings=extra_timings)

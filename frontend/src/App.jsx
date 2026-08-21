@@ -201,13 +201,16 @@ function MatchingPage() {
   )
 }
 
-// 页面顶部品牌区：标题 + 副标题；登录后额外带一个退出登录按钮
+// 页面顶部品牌区：logo + 标题 + 副标题；登录后额外带一个退出登录按钮
 function AppBrand({ onLogout }) {
   return (
     <div className="app-brand">
-      <div className="app-brand-titles">
-        <h1 className="app-title">图纸智能应用智能体</h1>
-        <div className="app-subtitle">由 Matrix Origin 矩阵起源 AI 数智平台生成</div>
+      <div className="app-brand-left">
+        <img className="app-logo" src="/logo.svg" alt="MatrixOrigin" />
+        <div className="app-brand-titles">
+          <h1 className="app-title">图纸智能应用智能体</h1>
+          <div className="app-subtitle">由 MatrixOrigin 矩阵起源 AI 数智平台生成</div>
+        </div>
       </div>
       {onLogout && (
         <button className="logout-btn" onClick={onLogout}>

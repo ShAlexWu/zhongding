@@ -116,6 +116,12 @@ def session_status(request: Request):
     return {"authenticated": auth.is_valid(request.cookies.get(auth.COOKIE_NAME))}
 
 
+@app.get("/api/auth/verify", status_code=204)
+def verify_session():
+    """Nginx auth_request target; the middleware performs the actual check."""
+    return Response(status_code=204)
+
+
 def _score_to_dict(rank: int, s: matcher.DiagramScore) -> dict:
     d = dataclasses.asdict(s)
     d["rank"] = rank

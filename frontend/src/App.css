@@ -1061,3 +1061,8 @@ h1 {
   background: #f6f8fa;
   border-radius: 4px;
 }
+.guide-audit-download {
+  display: inline-block;
+  color: #fff;
+  text-decoration: none;
+}

@@ -2,6 +2,7 @@
 # ============================================================
 #  安徽中鼎图纸相似度匹配系统 - macOS 启动脚本
 #   - Backend:  FastAPI (uvicorn)  http://127.0.0.1:50011
+#   - Audit:    FastAPI (uvicorn)  http://127.0.0.1:50012
 #   - Frontend: Vite (React)       http://127.0.0.1:50009
 #
 #  用法:
@@ -16,14 +17,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 BACKEND_PORT=50011
+AUDIT_PORT=50012
 FRONTEND_PORT=50009
 
 RUN_DIR="$SCRIPT_DIR/.run"
 mkdir -p "$RUN_DIR"
 BACKEND_LOG="$RUN_DIR/backend.log"
 FRONTEND_LOG="$RUN_DIR/frontend.log"
+AUDIT_LOG="$RUN_DIR/audit-backend.log"
 BACKEND_PID_FILE="$RUN_DIR/backend.pid"
 FRONTEND_PID_FILE="$RUN_DIR/frontend.pid"
+AUDIT_PID_FILE="$RUN_DIR/audit-backend.pid"
 ENV_FILE="$SCRIPT_DIR/.env"
 
 log()  { echo "[start.sh] $*"; }
@@ -34,7 +38,7 @@ err()  { echo "[start.sh][ERROR] $*" >&2; }
 # stop 子命令：停止上次启动的前后端进程
 # ------------------------------------------------------------
 if [ "${1:-}" = "stop" ]; then
-  for pid_file in "$BACKEND_PID_FILE" "$FRONTEND_PID_FILE"; do
+  for pid_file in "$BACKEND_PID_FILE" "$AUDIT_PID_FILE" "$FRONTEND_PID_FILE"; do
     if [ -f "$pid_file" ]; then
       pid="$(cat "$pid_file")"
       if kill -0 "$pid" 2>/dev/null; then
@@ -81,7 +85,7 @@ prompt_secret() {
     return 0
   fi
   if [ ! -t 0 ]; then
-    warn "$var_name 未设置（非交互终端，跳过录入提示）。$skip_warning"
+    warn "${var_name} 未设置（非交互终端，跳过录入提示）。${skip_warning}"
     return 0
   fi
   echo ""
@@ -92,14 +96,20 @@ prompt_secret() {
     set_env_var "$var_name" "$input_val"
     log "已保存 $var_name 到 $ENV_FILE"
   else
-    warn "未输入 $var_name。$skip_warning"
+    warn "未输入 ${var_name}。${skip_warning}"
   fi
 }
 
 # 通义千问 / DashScope API Key：用于图片&文本向量化、QWEN 解析
 prompt_secret "DASHSCOPE_API_KEY" \
-  "请输入 DASHSCOPE_API_KEY（通义千问/DashScope API Key，直接回车跳过）: " \
-  "图片/文本向量化及 QWEN 解析将不可用。"
+  "请输入 DASHSCOPE_API_KEY（检索、解析与图纸审核共用，直接回车跳过）: " \
+  "检索模型不可用；图纸审核将进入 dry-run，模型项只给 WARNING。"
+
+if [ -z "${DASHSCOPE_API_KEY:-}" ]; then
+  export VLM_DRY_RUN=1
+else
+  export VLM_DRY_RUN=0
+fi
 
 # MatrixOne（MO）数据库连接密码
 prompt_secret "MO_PASSWORD" \
@@ -147,6 +157,8 @@ fi
 # ------------------------------------------------------------
 log "同步 Python 依赖 (uv sync) ..."
 uv sync
+log "同步审核服务 Python 依赖 (Python 3.13) ..."
+uv sync --project "$SCRIPT_DIR/audit_backend" --python 3.13
 
 if [ ! -d "$SCRIPT_DIR/frontend/node_modules" ]; then
   log "安装前端依赖 (npm install) ..."
@@ -167,6 +179,7 @@ free_port() {
   fi
 }
 free_port "$BACKEND_PORT"
+free_port "$AUDIT_PORT"
 free_port "$FRONTEND_PORT"
 
 # ------------------------------------------------------------
@@ -180,6 +193,14 @@ log "启动后端 (FastAPI, port $BACKEND_PORT) ..."
 BACKEND_PID=$!
 echo "$BACKEND_PID" > "$BACKEND_PID_FILE"
 
+log "启动审核后端 (FastAPI, port $AUDIT_PORT) ..."
+(
+  cd "$SCRIPT_DIR/audit_backend"
+  exec uv run --python 3.13 uvicorn app.main:app --port "$AUDIT_PORT"
+) > "$AUDIT_LOG" 2>&1 &
+AUDIT_PID=$!
+echo "$AUDIT_PID" > "$AUDIT_PID_FILE"
+
 log "启动前端 (Vite, port $FRONTEND_PORT) ..."
 (
   cd "$SCRIPT_DIR/frontend"
@@ -191,9 +212,9 @@ echo "$FRONTEND_PID" > "$FRONTEND_PID_FILE"
 cleanup() {
   echo ""
   log "正在停止服务..."
-  kill "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true
-  wait "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true
-  rm -f "$BACKEND_PID_FILE" "$FRONTEND_PID_FILE"
+  kill "$BACKEND_PID" "$AUDIT_PID" "$FRONTEND_PID" 2>/dev/null || true
+  wait "$BACKEND_PID" "$AUDIT_PID" "$FRONTEND_PID" 2>/dev/null || true
+  rm -f "$BACKEND_PID_FILE" "$AUDIT_PID_FILE" "$FRONTEND_PID_FILE"
   exit 0
 }
 trap cleanup INT TERM
@@ -219,6 +240,7 @@ wait_for_port() {
 }
 
 wait_for_port "$BACKEND_PORT" "后端" 60 "$BACKEND_PID" "$BACKEND_LOG" || true
+wait_for_port "$AUDIT_PORT" "审核后端" 60 "$AUDIT_PID" "$AUDIT_LOG" || true
 wait_for_port "$FRONTEND_PORT" "前端" 40 "$FRONTEND_PID" "$FRONTEND_LOG" || true
 
 open "http://localhost:$FRONTEND_PORT/" 2>/dev/null || true
@@ -226,6 +248,7 @@ open "http://localhost:$FRONTEND_PORT/" 2>/dev/null || true
 echo ""
 log "已启动："
 log "  后端: http://127.0.0.1:$BACKEND_PORT   日志: $BACKEND_LOG"
+log "  审核: http://127.0.0.1:$AUDIT_PORT   日志: $AUDIT_LOG"
 log "  前端: http://127.0.0.1:$FRONTEND_PORT   日志: $FRONTEND_LOG"
 log "按 Ctrl+C 停止本次启动的全部服务（或另开终端运行 ./start.sh stop）。"
 echo ""

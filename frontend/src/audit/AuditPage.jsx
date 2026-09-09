@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertCircle, ArrowLeft, ArrowRight, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight,
-  CircleDashed, Clock3, Download, FileText, FolderOpen, Loader2, MinusCircle, Plus,
-  Crosshair, Maximize2, RotateCw, Search, Trash2, Upload, X, XCircle, ZoomIn, ZoomOut,
+  CircleAlert, CircleDashed, Clock3, Download, FileText, FolderOpen, Loader2, MinusCircle, Plus,
+  Crosshair, Maximize2, RotateCw, Search, Trash2, TriangleAlert, Upload, X, XCircle, ZoomIn, ZoomOut,
 } from 'lucide-react'
 import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
@@ -15,9 +15,10 @@ const SAMPLE_URL = '/static/samples/zhongji-v4-audit-sample.zip'
 const STEPS = ['选择文件', '客户输入', '确认提交']
 const KIND_LABELS = { pdf: '图纸PDF', api_json: '结构JSON', spatial: '空间JSON', docx: '说明书', trademark: '商标图' }
 const VERDICTS = {
-  pass: ['通过', 'ok'], fail: ['不通过', 'bad'], warning: ['警告', 'warn'], skipped: ['跳过', 'muted'],
-  error: ['错误', 'bad'], pending: ['待审核', 'muted'],
+  pass: ['通过', 'ok', CheckCircle2], fail: ['不通过', 'bad', XCircle], warning: ['待审', 'warn', MinusCircle],
+  skipped: ['不适用', 'muted', MinusCircle], error: ['错误', 'bad', TriangleAlert], pending: ['待审', 'muted', Clock3],
 }
+const DOMAIN_ORDER = ['说明书', '总图', '门端图', '侧板图', '前端图', '底架图', '顶板图', '商标图', '全局通用']
 const DRAWING_NAMES = {
   '000A22G1B': '底架图', '000A22G1E': '门端图', '000A22G1F': '前端图',
   '000A22G1G': '总图', '000A22G1R': '顶板图', '000A22G1S': '侧板图',
@@ -66,8 +67,8 @@ function StatusBadge({ value }) {
 }
 
 function VerdictBadge({ value }) {
-  const [label, tone] = VERDICTS[value] || [value, 'muted']
-  return <span className={`audit-badge ${tone}`}>{label}</span>
+  const [label, tone, Icon] = VERDICTS[value] || [value, 'muted', Clock3]
+  return <span className={`audit-badge ${tone}`}><Icon />{label}</span>
 }
 
 function VerdictIcon({ value }) {
@@ -76,6 +77,10 @@ function VerdictIcon({ value }) {
   if (value === 'warning') return <AlertCircle className="verdict-icon warn" />
   if (value === 'skipped') return <MinusCircle className="verdict-icon muted" />
   return <Clock3 className="verdict-icon muted" />
+}
+
+function StarredBadge() {
+  return <span className="audit-starred" title="重点项（审图清单标 * 项）"><TriangleAlert />重点</span>
 }
 
 function FileChips({ files = [] }) {
@@ -246,7 +251,7 @@ function Review({ projectId, onBack }) {
   const [selectedFile, setSelectedFile] = useState('')
   const [page, setPage] = useState(1)
   const [rect, setRect] = useState(null)
-  const [activeEvidence, setActiveEvidence] = useState(-1)
+  const [activeEvidence, setActiveEvidence] = useState(0)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
   const [collapsed, setCollapsed] = useState(new Set())
@@ -280,12 +285,8 @@ function Review({ projectId, onBack }) {
     return queryMatch && verdictMatch
   }), [filter, rules, search])
   const groupedRules = useMemo(() => {
-    const groups = new Map()
-    filteredRules.forEach((rule) => { if (!groups.has(rule.domain)) groups.set(rule.domain, []); groups.get(rule.domain).push(rule) })
-    return [...groups.entries()]
+    return DOMAIN_ORDER.map((domain) => [domain, filteredRules.filter((rule) => rule.domain === domain)]).filter(([, items]) => items.length)
   }, [filteredRules])
-  const drawingGroups = groupedRules.filter(([domain]) => domain !== '全局通用')
-  const globalGroup = groupedRules.find(([domain]) => domain === '全局通用')
 
   if (!detail) return <div className="audit-loading"><Loader2 className="spin" />{error || '正在加载审核结果…'}</div>
   const project = detail.project
@@ -332,9 +333,8 @@ function Review({ projectId, onBack }) {
       <PdfViewer files={previewFiles} fileId={selectedFile} onFile={setSelectedFile} page={page} onPage={setPage} rect={rect} />
       <section className="audit-rule-panel">
         <div className="audit-progress"><div><span>审核进度</span><b>终态 {terminal}/{rules.length || 40}</b></div><div className="audit-progress-bar"><i className="pass" style={{ width: `${(summary.pass || 0) / (rules.length || 1) * 100}%` }} /><i className="fail" style={{ width: `${(summary.fail || 0) / (rules.length || 1) * 100}%` }} /><i className="warning" style={{ width: `${(summary.warning || 0) / (rules.length || 1) * 100}%` }} /><i className="skipped" style={{ width: `${(summary.skipped || 0) / (rules.length || 1) * 100}%` }} /></div><p><span className="ok">{summary.pass || 0} 通过</span><span className="bad">{summary.fail || 0} 不通过</span><span className="warn">{(summary.warning || 0) + (summary.pending || 0)} 待审</span><span>{summary.skipped || 0} 不适用</span></p></div>
-        <div className="audit-rule-tools"><div>{[['all', '全部'], ['fail', '不通过'], ['warning', '待审']].map(([value, label]) => <button key={value} className={filter === value ? 'active' : ''} onClick={() => setFilter(value)}>{label}</button>)}</div><label><Search /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索规则…" /></label></div>
-        <div className="audit-rules">{drawingGroups.map(([domain, items]) => <RuleGroup key={domain} domain={domain} items={items} collapsed={collapsed.has(domain)} currentKey={current?.rule_key} onToggle={toggleDomain} onSelect={(ruleKey) => { setSelectedRule(ruleKey); setRect(null); setActiveEvidence(-1) }} />)}</div>
-        {globalGroup && <div className="audit-global-rules"><RuleGroup domain={globalGroup[0]} items={globalGroup[1]} collapsed={collapsed.has(globalGroup[0])} currentKey={current?.rule_key} onToggle={toggleDomain} onSelect={(ruleKey) => { setSelectedRule(ruleKey); setRect(null); setActiveEvidence(-1) }} /></div>}
+        <div className="audit-rule-tools"><div>{[['all', '全部'], ['fail', '不通过'], ['warning', '待审'], ['pass', '通过']].map(([value, label]) => <button key={value} className={filter === value ? 'active' : ''} onClick={() => setFilter(value)}>{label}</button>)}</div><label><Search /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索规则…" /></label></div>
+        <div className="audit-rules">{groupedRules.map(([domain, items]) => <RuleGroup key={domain} domain={domain} items={items} collapsed={collapsed.has(domain)} currentKey={current?.rule_key} onToggle={toggleDomain} onSelect={(ruleKey) => { setSelectedRule(ruleKey); setRect(null); setActiveEvidence(0) }} />)}</div>
       </section>
       <EvidencePanel current={current} files={previewFiles} activeEvidence={activeEvidence} jump={jump} rerun={rerun} rerunning={rerunning} />
     </div>
@@ -342,28 +342,144 @@ function Review({ projectId, onBack }) {
 }
 
 function RuleGroup({ domain, items, collapsed, currentKey, onToggle, onSelect }) {
+  const fail = items.filter((rule) => rule.verdict === 'fail').length
+  const warning = items.filter((rule) => ['warning', 'pending'].includes(rule.verdict)).length
+  const pass = items.filter((rule) => rule.verdict === 'pass').length
   return <div className="audit-rule-group">
-    <button className="audit-domain" onClick={() => onToggle(domain)}>{collapsed ? <ChevronRight /> : <ChevronDown />}<b>{domain}</b><span>{items.filter((rule) => rule.verdict === 'fail').length || ''}<small>{items.filter((rule) => rule.verdict === 'pass').length}/{items.length}</small></span></button>
-    {!collapsed && <ul>{items.map((rule) => <li key={rule.rule_key}><button className={rule.rule_key === currentKey ? 'active' : ''} onClick={() => onSelect(rule.rule_key)}><VerdictIcon value={rule.verdict} /><span><b title={rule.title}>{rule.title}</b><small>{rule.rule_key}</small></span></button></li>)}</ul>}
+    <button className="audit-domain" onClick={() => onToggle(domain)}>{collapsed ? <ChevronRight /> : <ChevronDown />}<b>{domain}</b><span>{fail > 0 && <em className="bad">{fail}</em>}{warning > 0 && <em className="warn">{warning}</em>}<small>{pass}/{items.length}</small></span></button>
+    {!collapsed && <ul>{items.map((rule) => <li key={rule.rule_key}><button className={rule.rule_key === currentKey ? 'active' : ''} onClick={() => onSelect(rule.rule_key)}><VerdictIcon value={rule.verdict} /><span><b title={rule.title}>{rule.title}</b><small>{rule.rule_key}{rule.is_starred && <StarredBadge />}</small></span></button></li>)}</ul>}
   </div>
 }
 
 function EvidencePanel({ current, files, activeEvidence, jump, rerun, rerunning }) {
   const [selectedDrawing, setSelectedDrawing] = useState('')
+  const [vlmOpen, setVlmOpen] = useState(false)
   if (!current) return <section className="audit-evidence-panel audit-no-selection"><FileText /><p>在左侧选择一个审核项，此处展示判定详情与证据原文</p></section>
   const canRerun = ['fail', 'warning', 'error'].includes(current.verdict)
-  const previewable = new Set(files.map((file) => file.id))
   const drawingGroups = groupEvidenceByDrawing(current, files)
   const grouped = GROUPED_RULES.has(current.rule_key) && drawingGroups.length > 0
   const activeGroup = drawingGroups.find((group) => group.fileId === selectedDrawing) || drawingGroups[0]
   return <section className="audit-evidence-panel">
-    <header><div><span>{current.rule_key}</span><small>{current.domain}</small><b>{current.engine === 'vlm' ? 'VLM' : '规则'}</b></div><h2>{current.title}</h2><div className="audit-evidence-verdict"><VerdictBadge value={current.verdict} />{canRerun && <button className="audit-btn secondary small" disabled={rerunning} onClick={rerun}><RotateCw className={rerunning ? 'spin' : ''} />{rerunning ? '重跑中…' : '重跑此项'}</button>}</div>{grouped && <div className="audit-drawing-picker"><small>按图纸查看</small><div>{drawingGroups.map((group) => <button key={group.fileId} className={group.fileId === activeGroup.fileId ? 'active' : ''} onClick={() => setSelectedDrawing(group.fileId)}><b>{group.label}</b><span>{group.code || `${group.entries.length} 条证据`}</span></button>)}</div></div>}</header>
+    <header>
+      <div className="audit-evidence-meta"><span>{current.rule_key}</span><small>{current.domain}</small><i><b>{current.engine === 'vlm' ? 'VLM' : '规则'}</b>{current.priority === 'P0' && <em>P0</em>}</i></div>
+      <h2>{current.title}</h2>
+      <div className="audit-evidence-verdict"><VerdictBadge value={current.verdict} />{canRerun && <button className="audit-btn secondary small" disabled={rerunning} onClick={rerun}><RotateCw className={rerunning ? 'spin' : ''} />{rerunning ? '重跑中…' : '重跑此项'}</button>}</div>
+      {grouped && <div className="audit-drawing-picker"><small>按图纸查看</small><div>{drawingGroups.map((group) => <button key={group.fileId} className={group.fileId === activeGroup.fileId ? 'active' : ''} aria-pressed={group.fileId === activeGroup.fileId} onClick={() => setSelectedDrawing(group.fileId)}><b>{group.label}</b><span>{group.code || `${group.entries.length} 条证据`}</span></button>)}</div></div>}
+    </header>
     <div className="audit-evidence-body">
-      <section><h3>判定结论</h3><p>{current.conclusion || current.error || '等待规则执行…'}</p></section>
-      {grouped && activeGroup ? <section><h3>{activeGroup.label}证据 <span>{activeGroup.entries.length}</span></h3><GroupedEvidenceCards ruleKey={current.rule_key} entries={activeGroup.entries} activeEvidence={activeEvidence} jump={jump} /></section> : <section><h3>证据 <span>{current.evidence?.length || 0}</span></h3>{(current.evidence || []).length ? <div className="audit-evidence-cards">{current.evidence.map((item, index) => { const canLocate = previewable.has(item.file_id) && item.page && item.rect; return <button key={index} className={index === activeEvidence ? 'active' : ''} disabled={!canLocate} onClick={() => jump(item, index)}><span>证据 {index + 1}{item.page ? ` · 第 ${item.page} 页` : ''}</span><p>{item.text || '未提供证据原文'}</p><i>{canLocate ? '定位图纸 ↗' : '文字依据'}</i></button> })}</div> : <p className="audit-muted">暂无可展示证据</p>}</section>}
-      <section><h3>执行信息</h3><dl><div><dt>引擎</dt><dd>{current.engine === 'vlm' ? '视觉大模型' : '确定性规则'}</dd></div><div><dt>延迟</dt><dd>{current.latency_ms ? `${current.latency_ms} ms` : current.status === 'done' ? '已完成' : '等待完成'}</dd></div><div><dt>尝试次数</dt><dd>{current.attempts ?? '—'}</dd></div><div><dt>成本</dt><dd>{current.cost_cny != null ? `¥${Number(current.cost_cny).toFixed(3)}` : '—'}</dd></div></dl></section>
+      {current.conclusion && <section><h3>判定结论</h3><p>{current.conclusion}</p></section>}
+      {current.error && <div className="audit-rule-error"><AlertCircle />{current.error}</div>}
+      {grouped && activeGroup && <section><h3>{activeGroup.label}证据 <span>({activeGroup.entries.length})</span></h3><GroupedEvidenceCards ruleKey={current.rule_key} entries={activeGroup.entries} activeEvidence={activeEvidence} jump={jump} /></section>}
+      {!grouped && current.verdict !== 'pending' && <section><GenericEvidenceCards rule={current} activeEvidence={activeEvidence} jump={jump} /></section>}
+      {current.vlm_raw && <section className="audit-vlm-raw"><button onClick={() => setVlmOpen((value) => !value)}>{vlmOpen ? <ChevronDown /> : <ChevronRight />}VLM 原始返回<span>{current.engine}</span></button>{vlmOpen && <pre>{JSON.stringify(current.vlm_raw, null, 2)}</pre>}</section>}
+      <section><h3>执行信息</h3><dl><MetaRow label="Tokens in" value={current.tokens_in?.toLocaleString() || '—'} /><MetaRow label="Tokens out" value={current.tokens_out?.toLocaleString() || '—'} /><MetaRow label="成本 (CNY)" value={current.cost_cny != null ? `¥${Number(current.cost_cny).toFixed(3)}` : '—'} /><MetaRow label="延迟" value={current.latency_ms != null ? `${current.latency_ms} ms` : '—'} /><MetaRow label={current.engine === 'vlm' ? '模型尝试' : '人工重跑'} value={current.engine === 'vlm' ? current.vlm_attempts : current.attempts} /><MetaRow label="引擎" value={current.engine === 'vlm' ? '视觉大模型' : '规则引擎'} /></dl></section>
     </div>
   </section>
+}
+
+function MetaRow({ label, value }) {
+  return <div><dt><Clock3 />{label}</dt><dd>{value ?? '—'}</dd></div>
+}
+
+const TYPE_LABEL = { doc: '说明书原文', json: 'JSON 字段', pdf: '图面区域', input: '客户输入' }
+
+const CHECKPOINTS = {
+  'MAN-01': [
+    { label: '图号一致性', keywords: ['图号', 'Drawing No'] },
+    { label: '版本号一致性', keywords: ['版本', 'Revision'] },
+  ],
+  'MAN-06': [{ label: '外面漆颜色' }, { label: '内面漆颜色' }],
+  'TOT-01': [
+    { label: '外部尺寸', basisIndexes: [0, 1, 2], drawingIndexes: [7, 8, 9], basisNote: '说明书外部长、宽、高', drawingNote: '总图外部长、宽、高标注' },
+    { label: '内部尺寸', basisIndexes: [3, 4, 5], drawingIndexes: [10, 11, 12], basisNote: '说明书内部长、宽、高', drawingNote: '总图内部长、宽、高标注' },
+    { label: '内部容积', basisIndexes: [6], drawingIndexes: [13], basisNote: '说明书额定内部容积', drawingNote: '依据总图内部尺寸计算' },
+    { label: '外部容积', basisIndexes: [0, 1, 2], drawingIndexes: [7, 8, 9], basisNote: '依据说明书外部尺寸计算', drawingNote: '依据总图外部尺寸计算' },
+  ],
+  'TOT-02': [
+    { label: '净重', keywords: ['tare_weight', '净重'] }, { label: '最大总重', keywords: ['max_gross', '总重'] },
+    { label: '载重', keywords: ['payload', '载重'] }, { label: '堆码试验载荷', keywords: ['stacking', '堆码'] },
+    { label: '地板强度', keywords: ['floor_strength', '地板强度'] },
+  ],
+  'TOT-03': [
+    { label: '锁杆数量与门扇分布', keywords: ['锁杆'] }, { label: '通风器数量、侧板覆盖和端部位置', keywords: ['通风器'] },
+    { label: '地板钉总数与每组 4/6 颗模式', keywords: ['地板钉'] }, { label: '地板钉纵向标准间距', keywords: ['地板钉'] },
+  ],
+  'TOT-04': [{ label: '变更板厚' }, { label: '客户特殊要求' }],
+  'TOT-05': [
+    { label: '前角柱拉筋排布与规格', keywords: ['前角柱'] }, { label: '后角柱拉筋排布与规格', keywords: ['后角柱'] },
+    { label: '顶侧梁绳环排布与规格', keywords: ['顶侧梁'] }, { label: '底侧梁绳环排布与规格', keywords: ['底侧梁'] },
+  ],
+  'DOOR-01': [{ label: '门铰链选用', keywords: ['铰链'] }, { label: '门绳选用', keywords: ['门绳'] }, { label: '门封铆钉选用', keywords: ['铆钉'] }],
+  'DOOR-02': [{ label: '门封胶条包角', keywords: ['包角', 'E100007'] }, { label: '门封压条 ABS 材质', keywords: ['压条', 'ABS'] }],
+  'DOOR-06': [{ label: '锁杆整套或散件', keywords: ['锁杆'] }, { label: '后角柱拉筋排布', keywords: ['后角柱', '拉筋'] }],
+  'SIDE-03': [{ label: '顶侧梁绳环排布与数量', keywords: ['绳环'] }, { label: '通风器排布与数量', keywords: ['通风器'] }],
+  'FRONT-01': [{ label: '底角件三角板板厚', keywords: ['三角板'] }, { label: '鹅颈槽封板板厚', keywords: ['鹅颈槽', '封板'] }],
+  'FRONT-02': [{ label: '前角柱拉筋排布', keywords: ['排布'] }, { label: '前角柱拉筋规格', keywords: ['材质', '板厚', '规格'] }],
+  'FRONT-04': [{ label: '塑料地板支撑打胶注释', keywords: ['SEALING', '打胶'] }, { label: '塑料地板支撑多余焊接注释', keywords: ['WELD', '焊接'] }],
+  'CHAS-03': [{ label: '宽／底横梁板厚', keywords: ['宽横梁', '底横梁'] }, { label: '短宽／底横梁板厚', keywords: ['短宽', '短底'] }],
+  'CHAS-04': [{ label: '地板钉排布', keywords: ['地板钉'] }, { label: '前端避开塑料角撑', keywords: ['角撑', '地板支撑', 'F240102', 'F241002'] }],
+  'TM-01': [
+    { label: '门端视图', keywords: ['door_end'], basisNote: '对比两张切片的门板波形与通风器数量、位置。' },
+    { label: '侧板视图', keywords: [' side:'], basisNote: '对比两张切片的侧板波形与通风器数量、位置。' },
+    { label: '前端视图', keywords: ['front_end'], basisNote: '对比两张切片的前端波形与通风器数量、位置。' },
+    { label: '顶板视图', keywords: [' roof:'], basisNote: '对比两张切片的顶板波形与通风器数量、位置。' },
+  ],
+  'TM-02': [{ label: 'ISO 标颜色' }, { label: '重量标颜色' }],
+  'TM-04': [{ label: '重量标数值一致性' }, { label: '重量标格式' }],
+  'TM-05': [{ label: '客户公司名称' }, { label: '客户公司地址' }],
+  'TM-06': [
+    { label: '允许堆码载荷（1.8g）', keywords: ['allowable_stacking_load_1_8g', '堆码'] },
+    { label: '横向刚性试验力', keywords: ['transverse_racking_test_force', '横向刚性'] },
+  ],
+}
+
+function buildGenericCheckpointCards(rule) {
+  const evidenceCheckpoints = [...new Set((rule.evidence || []).map((anchor) => anchor.checkpoint).filter(Boolean))]
+  const definitions = CHECKPOINTS[rule.rule_key] || (evidenceCheckpoints.length ? evidenceCheckpoints.map((label) => ({ label })) : [{ label: rule.title.replace(/^\*/, '') }])
+  const entries = (rule.evidence || []).map((anchor, index) => ({ anchor, index }))
+  const basisPool = entries.filter(({ anchor }) => anchor.side === 'manual' || anchor.type === 'input')
+  const drawingPool = entries.filter(({ anchor }) => anchor.side !== 'manual' && anchor.type !== 'input')
+  return definitions.map((definition) => {
+    const checkpointEntries = entries.filter(({ anchor }) => anchor.checkpoint === definition.label)
+    const select = (pool, indexes) => {
+      if (indexes) return indexes.map((index) => entries[index]).filter(Boolean)
+      if (checkpointEntries.length) return pool.filter((entry) => entry.anchor.checkpoint === definition.label)
+      if (!definition.keywords) return pool
+      return pool.filter(({ anchor }) => definition.keywords.some((keyword) => anchor.text.toLowerCase().includes(keyword.toLowerCase())))
+    }
+    return {
+      label: definition.label,
+      basis: select(basisPool, definition.basisIndexes),
+      basisNote: definition.basisNote,
+      drawing: select(drawingPool, definition.drawingIndexes),
+      drawingNote: definition.drawingNote,
+      verdict: checkpointEntries.find(({ anchor }) => anchor.checkpoint_verdict)?.anchor.checkpoint_verdict || rule.verdict,
+    }
+  })
+}
+
+function GenericEvidenceCards({ rule, activeEvidence, jump }) {
+  return <div className="audit-checkpoint-cards">{buildGenericCheckpointCards(rule).map((card) => {
+    const failed = ['fail', 'error'].includes(card.verdict)
+    const review = ['warning', 'skipped'].includes(card.verdict) || card.drawing.length === 0
+    const Icon = failed ? XCircle : review ? CircleAlert : CheckCircle2
+    const status = failed ? (card.verdict === 'error' ? '执行失败' : '未通过') : review ? (card.verdict === 'skipped' ? '已跳过' : '待确认') : '已通过'
+    const tone = failed ? 'fail' : review ? 'warning' : 'pass'
+    return <article key={card.label} className={`${tone} ${card.drawing.some(({ index }) => index === activeEvidence) ? 'active' : ''}`}>
+      <header><Icon /><b>{card.label}</b><span>{status}</span></header>
+      <div className="audit-checkpoint-content">
+        <div className="audit-checkpoint-section"><small>判定依据</small>{card.basisNote && <p>{card.basisNote}</p>}{card.basis.length ? <div>{card.basis.map((entry) => <EvidenceRow key={entry.index} label={TYPE_LABEL[entry.anchor.type] || '判定依据'} entry={entry} jump={jump} />)}</div> : !card.basisNote && <p>审核要求：{card.label}</p>}</div>
+        <div className="audit-checkpoint-section"><small>{rule.domain === '说明书' ? '资料证据' : '图面证据'}</small>{card.drawingNote && <p>{card.drawingNote}</p>}{card.drawing.length ? <div className={rule.rule_key === 'TM-01' ? 'audit-evidence-grid' : ''}>{card.drawing.map((entry) => <EvidenceRow key={entry.index} label={rule.rule_key === 'TM-01' ? tm01EvidenceLabel(entry.anchor.text) : (TYPE_LABEL[entry.anchor.type] || '审查证据')} entry={entry} jump={jump} />)}</div> : <p className="audit-no-evidence">未找到与该审查点对应的证据。</p>}</div>
+      </div>
+    </article>
+  })}</div>
+}
+
+function tm01EvidenceLabel(text) {
+  const source = text.includes(' general ') ? '总图切片' : '商标图切片'
+  if (text.startsWith('TM-01 WAVE ')) return `${source} · 波形`
+  if (text.startsWith('TM-01 VENT ')) return `${source} · 通风器`
+  return source
 }
 
 function GroupedEvidenceCards({ ruleKey, entries, activeEvidence, jump }) {
@@ -378,7 +494,7 @@ function GroupedEvidenceCards({ ruleKey, entries, activeEvidence, jump }) {
   return <div className="audit-colored-cards">{cards.map((card) => {
     const missing = !card.drawing || card.drawing.anchor.text.includes('图中序号')
     const active = card.bom.index === activeEvidence || card.drawing?.index === activeEvidence
-    return <article key={card.bom.index} className={`${missing ? 'fail' : 'pass'} ${active ? 'active' : ''}`}><header>{missing ? <XCircle /> : <CheckCircle2 />}<b>序号 {card.item}</b><code>{card.partCode}</code><span>{missing ? '缺少图面标注' : '标注一致'}</span></header><EvidenceRow label={`BOM 表 · ${card.thickness} mm`} entry={card.bom} jump={jump} />{card.drawing ? <EvidenceRow label={missing ? '图中序号定位' : '图面厚度标注'} entry={card.drawing} jump={jump} /> : <p className="audit-missing-evidence">图中未找到与 BOM 厚度一致且绑定到该零件的标注</p>}</article>
+    return <article key={card.bom.index} className={`${missing ? 'fail' : 'pass'} ${active ? 'active' : ''}`}><header>{missing ? <XCircle /> : <CheckCircle2 />}<b>序号 {card.item}</b><code>{card.partCode}</code><span>{missing ? '缺少图面标注' : '标注一致'}</span></header><EvidenceRow label={`BOM 表 · ${card.thickness} mm`} entry={card.bom} jump={jump} />{card.drawing ? <EvidenceRow label={missing ? '图中序号定位' : '图面厚度标注'} entry={card.drawing} partCode={card.partCode} jump={jump} /> : <p className="audit-missing-evidence">图中未找到与 BOM 厚度一致且绑定到该零件的标注</p>}</article>
   })}</div>
 }
 
@@ -408,15 +524,20 @@ function groupEvidenceByDrawing(rule, files) {
   return [...groups.values()]
 }
 
-function EvidenceRow({ label, entry, jump }) {
+function EvidenceRow({ label, entry, jump, partCode }) {
   const { anchor, index } = entry
-  const locatable = anchor.file_id && anchor.page && anchor.rect
-  return <div className="audit-paired-evidence"><div><b>{label}</b>{anchor.page && <small>P{anchor.page}</small>}<p>{compactEvidence(anchor.text)}</p></div>{locatable && <button onClick={() => jump(anchor, index)}><Crosshair />定位</button>}</div>
+  const locatable = ['pdf', 'doc'].includes(anchor.type) && anchor.file_id && anchor.page && anchor.rect
+  return <div className="audit-paired-evidence"><div><div className="audit-evidence-label"><b>{label}</b>{anchor.page && <small>P{anchor.page}</small>}</div><p title={anchor.text}>{compactEvidence(anchor.text, partCode)}</p>{anchor.source_url && <a href={anchor.source_url} target="_blank" rel="noreferrer">官方来源{anchor.checked_at ? ` · ${anchor.checked_at}` : ''}</a>}</div>{locatable && <button onClick={() => jump(anchor, index)}><Crosshair />定位</button>}</div>
 }
 
-function compactEvidence(text) {
+function compactEvidence(text, partCode) {
+  if (/^TM-01 (VIEW|WAVE|VENT) /.test(text)) return text.slice(text.indexOf(':') + 1).trim().replace(/^(总图|商标图)切片：/, '')
   if (!text.includes('；绑定=')) return text
   const [value, bindings = ''] = text.split('；绑定=', 2)
+  if (partCode) {
+    const boundPart = bindings.split(' | ').find((name) => name.includes(partCode)) || bindings.split(' | ')[0]
+    return boundPart ? `${value}；绑定=${boundPart.trim()}` : value
+  }
   const names = [...new Set(bindings.split(' | ').map((item) => item.split('/').pop()?.trim()).filter(Boolean))]
   return `${value}；绑定=${names.slice(0, 3).join(' / ')}${names.length > 3 ? ` 等${names.length}处` : ''}`
 }

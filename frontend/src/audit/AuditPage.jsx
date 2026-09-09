@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertCircle, ArrowLeft, ArrowRight, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight,
   CircleDashed, Clock3, Download, FileText, FolderOpen, Loader2, MinusCircle, Plus,
-  Maximize2, RotateCw, Search, Trash2, Upload, X, XCircle, ZoomIn, ZoomOut,
+  Crosshair, Maximize2, RotateCw, Search, Trash2, Upload, X, XCircle, ZoomIn, ZoomOut,
 } from 'lucide-react'
 import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
@@ -18,6 +18,11 @@ const VERDICTS = {
   pass: ['通过', 'ok'], fail: ['不通过', 'bad'], warning: ['警告', 'warn'], skipped: ['跳过', 'muted'],
   error: ['错误', 'bad'], pending: ['待审核', 'muted'],
 }
+const DRAWING_NAMES = {
+  '000A22G1B': '底架图', '000A22G1E': '门端图', '000A22G1F': '前端图',
+  '000A22G1G': '总图', '000A22G1R': '顶板图', '000A22G1S': '侧板图',
+}
+const GROUPED_RULES = new Set(['GEN-01', 'GEN-02', 'GEN-03'])
 
 async function api(path, init) {
   const response = await fetch(`${BASE}${path}`, init)
@@ -344,17 +349,76 @@ function RuleGroup({ domain, items, collapsed, currentKey, onToggle, onSelect })
 }
 
 function EvidencePanel({ current, files, activeEvidence, jump, rerun, rerunning }) {
+  const [selectedDrawing, setSelectedDrawing] = useState('')
   if (!current) return <section className="audit-evidence-panel audit-no-selection"><FileText /><p>在左侧选择一个审核项，此处展示判定详情与证据原文</p></section>
   const canRerun = ['fail', 'warning', 'error'].includes(current.verdict)
   const previewable = new Set(files.map((file) => file.id))
+  const drawingGroups = groupEvidenceByDrawing(current, files)
+  const grouped = GROUPED_RULES.has(current.rule_key) && drawingGroups.length > 0
+  const activeGroup = drawingGroups.find((group) => group.fileId === selectedDrawing) || drawingGroups[0]
   return <section className="audit-evidence-panel">
-    <header><div><span>{current.rule_key}</span><small>{current.domain}</small><b>{current.engine === 'vlm' ? 'VLM' : '规则'}</b></div><h2>{current.title}</h2><div><VerdictBadge value={current.verdict} />{canRerun && <button className="audit-btn secondary small" disabled={rerunning} onClick={rerun}><RotateCw className={rerunning ? 'spin' : ''} />{rerunning ? '重跑中…' : '重跑此项'}</button>}</div></header>
+    <header><div><span>{current.rule_key}</span><small>{current.domain}</small><b>{current.engine === 'vlm' ? 'VLM' : '规则'}</b></div><h2>{current.title}</h2><div className="audit-evidence-verdict"><VerdictBadge value={current.verdict} />{canRerun && <button className="audit-btn secondary small" disabled={rerunning} onClick={rerun}><RotateCw className={rerunning ? 'spin' : ''} />{rerunning ? '重跑中…' : '重跑此项'}</button>}</div>{grouped && <div className="audit-drawing-picker"><small>按图纸查看</small><div>{drawingGroups.map((group) => <button key={group.fileId} className={group.fileId === activeGroup.fileId ? 'active' : ''} onClick={() => setSelectedDrawing(group.fileId)}><b>{group.label}</b><span>{group.code || `${group.entries.length} 条证据`}</span></button>)}</div></div>}</header>
     <div className="audit-evidence-body">
       <section><h3>判定结论</h3><p>{current.conclusion || current.error || '等待规则执行…'}</p></section>
-      <section><h3>证据 <span>{current.evidence?.length || 0}</span></h3>{(current.evidence || []).length ? <div className="audit-evidence-cards">{current.evidence.map((item, index) => { const canLocate = previewable.has(item.file_id) && item.page && item.rect; return <button key={index} className={index === activeEvidence ? 'active' : ''} disabled={!canLocate} onClick={() => jump(item, index)}><span>证据 {index + 1}{item.page ? ` · 第 ${item.page} 页` : ''}</span><p>{item.text || '未提供证据原文'}</p><i>{canLocate ? '定位图纸 ↗' : '文字依据'}</i></button> })}</div> : <p className="audit-muted">暂无可展示证据</p>}</section>
+      {grouped && activeGroup ? <section><h3>{activeGroup.label}证据 <span>{activeGroup.entries.length}</span></h3><GroupedEvidenceCards ruleKey={current.rule_key} entries={activeGroup.entries} activeEvidence={activeEvidence} jump={jump} /></section> : <section><h3>证据 <span>{current.evidence?.length || 0}</span></h3>{(current.evidence || []).length ? <div className="audit-evidence-cards">{current.evidence.map((item, index) => { const canLocate = previewable.has(item.file_id) && item.page && item.rect; return <button key={index} className={index === activeEvidence ? 'active' : ''} disabled={!canLocate} onClick={() => jump(item, index)}><span>证据 {index + 1}{item.page ? ` · 第 ${item.page} 页` : ''}</span><p>{item.text || '未提供证据原文'}</p><i>{canLocate ? '定位图纸 ↗' : '文字依据'}</i></button> })}</div> : <p className="audit-muted">暂无可展示证据</p>}</section>}
       <section><h3>执行信息</h3><dl><div><dt>引擎</dt><dd>{current.engine === 'vlm' ? '视觉大模型' : '确定性规则'}</dd></div><div><dt>延迟</dt><dd>{current.latency_ms ? `${current.latency_ms} ms` : current.status === 'done' ? '已完成' : '等待完成'}</dd></div><div><dt>尝试次数</dt><dd>{current.attempts ?? '—'}</dd></div><div><dt>成本</dt><dd>{current.cost_cny != null ? `¥${Number(current.cost_cny).toFixed(3)}` : '—'}</dd></div></dl></section>
     </div>
   </section>
+}
+
+function GroupedEvidenceCards({ ruleKey, entries, activeEvidence, jump }) {
+  if (ruleKey !== 'GEN-01') return <ProcessEvidenceCards entries={entries} activeEvidence={activeEvidence} jump={jump} />
+  const cards = []
+  entries.forEach((entry) => {
+    const match = entry.anchor.text.match(/BOM 序号\s*(\d+).*?图号\s*([A-Z]\d{6}).*?厚度\/规格\s*([^；\s]+)/)
+    if (match) cards.push({ bom: entry, item: match[1], partCode: match[2], thickness: match[3] })
+    else if (cards.length && !cards.at(-1).drawing) cards.at(-1).drawing = entry
+  })
+  if (!cards.length) return <p className="audit-color-empty">未提取到可配对的 BOM 钣金件证据。</p>
+  return <div className="audit-colored-cards">{cards.map((card) => {
+    const missing = !card.drawing || card.drawing.anchor.text.includes('图中序号')
+    const active = card.bom.index === activeEvidence || card.drawing?.index === activeEvidence
+    return <article key={card.bom.index} className={`${missing ? 'fail' : 'pass'} ${active ? 'active' : ''}`}><header>{missing ? <XCircle /> : <CheckCircle2 />}<b>序号 {card.item}</b><code>{card.partCode}</code><span>{missing ? '缺少图面标注' : '标注一致'}</span></header><EvidenceRow label={`BOM 表 · ${card.thickness} mm`} entry={card.bom} jump={jump} />{card.drawing ? <EvidenceRow label={missing ? '图中序号定位' : '图面厚度标注'} entry={card.drawing} jump={jump} /> : <p className="audit-missing-evidence">图中未找到与 BOM 厚度一致且绑定到该零件的标注</p>}</article>
+  })}</div>
+}
+
+function ProcessEvidenceCards({ entries, activeEvidence, jump }) {
+  return <div className="audit-colored-cards">{entries.map((entry) => {
+    const fields = Object.fromEntries(entry.anchor.text.split('｜').slice(1).map((field) => { const separator = field.indexOf('='); return separator < 0 ? [field, ''] : [field.slice(0, separator), field.slice(separator + 1)] }))
+    const status = fields['状态'] || '已标注'
+    const tone = ['缺失', '绑定无效'].includes(status) ? 'fail' : status === '待确认' ? 'warning' : 'pass'
+    const Icon = tone === 'fail' ? XCircle : tone === 'warning' ? AlertCircle : CheckCircle2
+    return <article key={entry.index} className={`${tone} ${entry.index === activeEvidence ? 'active' : ''}`}><header><Icon /><b>{fields['部位'] || '图面工艺标注'}</b><span>{status}</span></header><div className="audit-process-basis"><small>判定依据</small><p>{fields['依据'] || '图纸原有标注'}</p></div><EvidenceRow label="图面证据" entry={{ ...entry, anchor: { ...entry.anchor, text: fields['图面'] || entry.anchor.text } }} jump={jump} /></article>
+  })}</div>
+}
+
+function groupEvidenceByDrawing(rule, files) {
+  if (!GROUPED_RULES.has(rule.rule_key)) return []
+  const fileById = new Map(files.map((file) => [file.id, file]))
+  const groups = new Map()
+  rule.evidence.forEach((anchor, index) => {
+    const fileId = anchor.file_id || 'other'
+    if (!groups.has(fileId)) {
+      const fileName = fileById.get(fileId)?.path.split(/[\\/]/).pop() || ''
+      const code = fileName.match(/000A22G1[A-Z]/)?.[0] || anchor.text.match(/000A22G1[A-Z]/)?.[0] || ''
+      groups.set(fileId, { fileId, code, label: DRAWING_NAMES[code] || fileName.replace(/_api\.pdf$/i, '') || '其他证据', entries: [] })
+    }
+    groups.get(fileId).entries.push({ anchor, index })
+  })
+  return [...groups.values()]
+}
+
+function EvidenceRow({ label, entry, jump }) {
+  const { anchor, index } = entry
+  const locatable = anchor.file_id && anchor.page && anchor.rect
+  return <div className="audit-paired-evidence"><div><b>{label}</b>{anchor.page && <small>P{anchor.page}</small>}<p>{compactEvidence(anchor.text)}</p></div>{locatable && <button onClick={() => jump(anchor, index)}><Crosshair />定位</button>}</div>
+}
+
+function compactEvidence(text) {
+  if (!text.includes('；绑定=')) return text
+  const [value, bindings = ''] = text.split('；绑定=', 2)
+  const names = [...new Set(bindings.split(' | ').map((item) => item.split('/').pop()?.trim()).filter(Boolean))]
+  return `${value}；绑定=${names.slice(0, 3).join(' / ')}${names.length > 3 ? ` 等${names.length}处` : ''}`
 }
 
 function PdfViewer({ files, fileId, onFile, page, onPage, rect }) {

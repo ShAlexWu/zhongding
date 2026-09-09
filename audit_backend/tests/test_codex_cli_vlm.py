@@ -10,6 +10,13 @@ from app.services.vlm_client import VLMClient
 from app.workers import worker
 
 
+def test_runner_uses_dashscope_for_trademark_reviews_by_default() -> None:
+    runner = worker.Runner()
+
+    assert settings.trademark_vlm_provider == "dashscope"
+    assert runner.trademark_vlm is runner.vlm
+
+
 def test_codex_cli_receives_whole_page_and_returns_existing_vlm_shape(real_pdf_path) -> None:  # noqa: ANN001
     client = CodexCLIClient(
         replace(

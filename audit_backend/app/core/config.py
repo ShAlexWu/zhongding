@@ -36,7 +36,7 @@ class Settings:
     vlm_dry_run: bool
     png_cache_dir: Path
     upload_dir: Path = Path("/tmp/zhongji-audit-uploads")
-    trademark_vlm_provider: str = "codex_cli"
+    trademark_vlm_provider: str = "dashscope"
     codex_cli_path: str = "codex"
     codex_model: str = "gpt-5.6-sol"
     standards_live_lookup: bool = True
@@ -70,7 +70,7 @@ def load_settings() -> Settings:
         dashscope_api_key=os.environ.get("DASHSCOPE_API_KEY", ""),
         vlm_dry_run=os.environ.get("VLM_DRY_RUN", "") in ("1", "true", "TRUE", "yes"),
         png_cache_dir=png_cache_dir,
-        trademark_vlm_provider=os.environ.get("TRADEMARK_VLM_PROVIDER", "codex_cli").strip().lower(),
+        trademark_vlm_provider=os.environ.get("TRADEMARK_VLM_PROVIDER", "dashscope").strip().lower(),
         codex_cli_path=os.environ.get("CODEX_CLI_PATH", "codex").strip() or "codex",
         codex_model=os.environ.get("CODEX_MODEL", "gpt-5.6-sol").strip() or "gpt-5.6-sol",
         standards_live_lookup=os.environ.get("STANDARDS_LIVE_LOOKUP", "1")

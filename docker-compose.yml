@@ -41,6 +41,7 @@ services:
       UPLOAD_DIR: /data/uploads
       PNG_CACHE_DIR: /data/png-cache
       TRADEMARK_VLM_PROVIDER: dashscope
+      VLM_MODEL: qwen3.7-flash
     volumes:
       - audit-data:/data
     expose:

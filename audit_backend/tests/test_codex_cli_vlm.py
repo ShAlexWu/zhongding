@@ -14,6 +14,7 @@ def test_runner_uses_dashscope_for_trademark_reviews_by_default() -> None:
     runner = worker.Runner()
 
     assert settings.trademark_vlm_provider == "dashscope"
+    assert settings.vlm_model == "qwen3.7-flash"
     assert runner.trademark_vlm is runner.vlm
 
 

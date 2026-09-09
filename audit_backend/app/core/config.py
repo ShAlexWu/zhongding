@@ -66,7 +66,7 @@ def load_settings() -> Settings:
         vlm_base_url=os.environ.get(
             "VLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
         ),
-        vlm_model=os.environ.get("VLM_MODEL", "qwen-vl-max-latest"),
+        vlm_model=os.environ.get("VLM_MODEL", "qwen3.7-flash"),
         dashscope_api_key=os.environ.get("DASHSCOPE_API_KEY", ""),
         vlm_dry_run=os.environ.get("VLM_DRY_RUN", "") in ("1", "true", "TRUE", "yes"),
         png_cache_dir=png_cache_dir,

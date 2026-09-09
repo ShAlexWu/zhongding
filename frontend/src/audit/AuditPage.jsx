@@ -279,6 +279,8 @@ function Review({ projectId, onBack }) {
     filteredRules.forEach((rule) => { if (!groups.has(rule.domain)) groups.set(rule.domain, []); groups.get(rule.domain).push(rule) })
     return [...groups.entries()]
   }, [filteredRules])
+  const drawingGroups = groupedRules.filter(([domain]) => domain !== '全局通用')
+  const globalGroup = groupedRules.find(([domain]) => domain === '全局通用')
 
   if (!detail) return <div className="audit-loading"><Loader2 className="spin" />{error || '正在加载审核结果…'}</div>
   const project = detail.project
@@ -323,10 +325,18 @@ function Review({ projectId, onBack }) {
       <section className="audit-rule-panel">
         <div className="audit-progress"><div><span>审核进度</span><b>终态 {terminal}/{rules.length || 40}</b></div><div className="audit-progress-bar"><i className="pass" style={{ width: `${(summary.pass || 0) / (rules.length || 1) * 100}%` }} /><i className="fail" style={{ width: `${(summary.fail || 0) / (rules.length || 1) * 100}%` }} /><i className="warning" style={{ width: `${(summary.warning || 0) / (rules.length || 1) * 100}%` }} /><i className="skipped" style={{ width: `${(summary.skipped || 0) / (rules.length || 1) * 100}%` }} /></div><p><span className="ok">{summary.pass || 0} 通过</span><span className="bad">{summary.fail || 0} 不通过</span><span className="warn">{(summary.warning || 0) + (summary.pending || 0)} 待审</span><span>{summary.skipped || 0} 不适用</span></p></div>
         <div className="audit-rule-tools"><div>{[['all', '全部'], ['fail', '不通过'], ['warning', '待审']].map(([value, label]) => <button key={value} className={filter === value ? 'active' : ''} onClick={() => setFilter(value)}>{label}</button>)}</div><label><Search /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索规则…" /></label></div>
-        <div className="audit-rules">{groupedRules.map(([domain, items]) => <div className="audit-rule-group" key={domain}><button className="audit-domain" onClick={() => toggleDomain(domain)}>{collapsed.has(domain) ? <ChevronRight /> : <ChevronDown />}<b>{domain}</b><span>{items.filter((rule) => rule.verdict === 'fail').length || ''}<small>{items.filter((rule) => rule.verdict === 'pass').length}/{items.length}</small></span></button>{!collapsed.has(domain) && <ul>{items.map((rule) => <li key={rule.rule_key}><button className={rule.rule_key === current?.rule_key ? 'active' : ''} onClick={() => { setSelectedRule(rule.rule_key); setRect(null); setActiveEvidence(-1) }}><VerdictIcon value={rule.verdict} /><span><b title={rule.title}>{rule.title}</b><small>{rule.rule_key}</small></span></button></li>)}</ul>}</div>)}</div>
+        <div className="audit-rules">{drawingGroups.map(([domain, items]) => <RuleGroup key={domain} domain={domain} items={items} collapsed={collapsed.has(domain)} currentKey={current?.rule_key} onToggle={toggleDomain} onSelect={(ruleKey) => { setSelectedRule(ruleKey); setRect(null); setActiveEvidence(-1) }} />)}</div>
+        {globalGroup && <div className="audit-global-rules"><RuleGroup domain={globalGroup[0]} items={globalGroup[1]} collapsed={collapsed.has(globalGroup[0])} currentKey={current?.rule_key} onToggle={toggleDomain} onSelect={(ruleKey) => { setSelectedRule(ruleKey); setRect(null); setActiveEvidence(-1) }} /></div>}
       </section>
       <EvidencePanel current={current} files={pdfFiles} activeEvidence={activeEvidence} jump={jump} rerun={rerun} rerunning={rerunning} />
     </div>
+  </div>
+}
+
+function RuleGroup({ domain, items, collapsed, currentKey, onToggle, onSelect }) {
+  return <div className="audit-rule-group">
+    <button className="audit-domain" onClick={() => onToggle(domain)}>{collapsed ? <ChevronRight /> : <ChevronDown />}<b>{domain}</b><span>{items.filter((rule) => rule.verdict === 'fail').length || ''}<small>{items.filter((rule) => rule.verdict === 'pass').length}/{items.length}</small></span></button>
+    {!collapsed && <ul>{items.map((rule) => <li key={rule.rule_key}><button className={rule.rule_key === currentKey ? 'active' : ''} onClick={() => onSelect(rule.rule_key)}><VerdictIcon value={rule.verdict} /><span><b title={rule.title}>{rule.title}</b><small>{rule.rule_key}</small></span></button></li>)}</ul>}
   </div>
 }
 

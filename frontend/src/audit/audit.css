@@ -126,15 +126,20 @@
 .audit-review-grid { display: grid; height: calc(100vh - 207px); min-height: 560px; grid-template-columns: minmax(420px, 1fr) 380px 460px; background: var(--audit-surface); }
 .audit-pdf-panel, .audit-rule-panel { height: 100%; min-width: 0; min-height: 0; overflow: hidden; border-right: 1px solid var(--audit-line); }
 .audit-pdf-panel { display: flex; min-width: 0; flex-direction: column; background: var(--audit-bg); }
-.audit-pdf-tabs { display: flex; height: 37px; overflow-x: auto; border-bottom: 1px solid var(--audit-line); background: var(--audit-surface); }
-.audit-pdf-tabs button { display: flex; min-width: 100px; max-width: 160px; align-items: center; gap: 5px; padding: 0 10px; overflow: hidden; border: 0; border-right: 1px solid var(--audit-line-soft); background: transparent; color: var(--audit-muted); font: 11px inherit; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-.audit-pdf-tabs button.active { box-shadow: inset 0 -2px var(--audit-accent); color: var(--audit-fg); }
-.audit-pdf-tabs svg { width: 13px; height: 13px; flex: 0 0 auto; }
-.audit-pdf-tools { display: flex; min-height: 41px; align-items: center; justify-content: center; gap: 20px; border-bottom: 1px solid var(--audit-line); background: var(--audit-surface); }
+.audit-pdf-tabs { display: flex; min-height: 51px; align-items: center; gap: 4px; overflow-x: auto; padding: 8px 12px; border-bottom: 1px solid var(--audit-line); background: var(--audit-surface); }
+.audit-pdf-tabs button { display: flex; min-width: 0; max-width: 170px; flex: 0 0 auto; align-items: center; gap: 6px; padding: 6px 10px; overflow: hidden; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--audit-muted); font: 12px inherit; white-space: nowrap; cursor: pointer; transition: .15s ease; }
+.audit-pdf-tabs button:hover { background: var(--audit-warm); color: var(--audit-fg-2); }
+.audit-pdf-tabs button.active { border-color: var(--audit-accent); background: var(--audit-accent-soft); color: var(--audit-accent); }
+.audit-pdf-tabs button span { overflow: hidden; text-overflow: ellipsis; }
+.audit-pdf-tabs svg { width: 14px; height: 14px; flex: 0 0 auto; }
+.audit-pdf-tools { display: flex; min-height: 56px; align-items: center; justify-content: flex-start; gap: 8px; padding: 0 20px; border-bottom: 1px solid var(--audit-line); background: var(--audit-surface); }
 .audit-pdf-tools > span { display: flex; align-items: center; gap: 5px; }
-.audit-pdf-tools b { min-width: 48px; color: var(--audit-fg-2); font: 500 11px ui-monospace, SFMono-Regular, Consolas, monospace; text-align: center; }
-.audit-pdf-tools .audit-icon-button { width: 27px; height: 27px; }
-.audit-canvas-scroll { min-height: 0; flex: 1; overflow: auto; padding: 16px; text-align: center; }
+.audit-pdf-tools > em { width: 1px; height: 30px; margin: 0 5px; background: var(--audit-line); }
+.audit-pdf-tools b { min-width: 62px; padding: 8px; border: 1px solid var(--audit-line); border-radius: 6px; color: var(--audit-fg-2); background: var(--audit-surface); font: 500 11px ui-monospace, SFMono-Regular, Consolas, monospace; text-align: center; }
+.audit-pdf-tools b i { color: var(--audit-meta); font-style: normal; }
+.audit-pdf-tools > span:last-child b { min-width: 48px; padding: 0; border: 0; background: transparent; }
+.audit-pdf-tools .audit-icon-button { width: 32px; height: 32px; }
+.audit-canvas-scroll { min-height: 0; flex: 1; overflow: auto; padding: 24px; text-align: center; }
 .audit-canvas { position: relative; display: inline-block; line-height: 0; box-shadow: 0 1px 5px rgba(15, 23, 42, .18); }
 .audit-canvas canvas { max-width: none; background: #fff; }
 .audit-highlight { position: absolute; box-sizing: border-box; border: 2px solid #f59e0b; border-radius: 3px; background: rgba(245, 158, 11, .2); box-shadow: 0 0 0 4px rgba(245, 158, 11, .12); animation: audit-pulse 1s ease-out 2; pointer-events: none; }
@@ -240,7 +245,7 @@
   .audit-stepper i { width: 5px; }
   .audit-file-list > div { grid-template-columns: 16px minmax(0, 1fr) 82px 30px; }
   .audit-review-title span { display: none; }
-  .audit-pdf-tabs button { min-width: 90px; }
+  .audit-pdf-tabs button { max-width: 145px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

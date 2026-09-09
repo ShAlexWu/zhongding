@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertCircle, ArrowLeft, ArrowRight, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight,
   CircleDashed, Clock3, Download, FileText, FolderOpen, Loader2, MinusCircle, Plus,
-  RotateCw, Search, Trash2, Upload, X, XCircle, ZoomIn, ZoomOut,
+  Maximize2, RotateCw, Search, Trash2, Upload, X, XCircle, ZoomIn, ZoomOut,
 } from 'lucide-react'
 import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
@@ -285,7 +285,10 @@ function Review({ projectId, onBack }) {
   if (!detail) return <div className="audit-loading"><Loader2 className="spin" />{error || '正在加载审核结果…'}</div>
   const project = detail.project
   const current = rules.find((rule) => rule.rule_key === selectedRule) || rules[0]
-  const pdfFiles = project.files.filter((file) => ['pdf', 'trademark'].includes(file.kind))
+  const drawings = project.files.filter((file) => file.kind === 'pdf')
+  const manuals = project.files.filter((file) => file.kind === 'docx')
+  const trademarks = project.files.filter((file) => file.kind === 'trademark')
+  const previewFiles = [drawings[0], ...manuals, ...trademarks, ...drawings.slice(1)].filter(Boolean)
   const terminal = rules.filter((rule) => rule.verdict !== 'pending').length
 
   function jump(anchor, index) {
@@ -321,14 +324,14 @@ function Review({ projectId, onBack }) {
     </header>
     {error && <div className="audit-error"><AlertCircle />{error}</div>}
     <div className="audit-review-grid">
-      <PdfViewer files={pdfFiles} fileId={selectedFile} onFile={setSelectedFile} page={page} onPage={setPage} rect={rect} />
+      <PdfViewer files={previewFiles} fileId={selectedFile} onFile={setSelectedFile} page={page} onPage={setPage} rect={rect} />
       <section className="audit-rule-panel">
         <div className="audit-progress"><div><span>审核进度</span><b>终态 {terminal}/{rules.length || 40}</b></div><div className="audit-progress-bar"><i className="pass" style={{ width: `${(summary.pass || 0) / (rules.length || 1) * 100}%` }} /><i className="fail" style={{ width: `${(summary.fail || 0) / (rules.length || 1) * 100}%` }} /><i className="warning" style={{ width: `${(summary.warning || 0) / (rules.length || 1) * 100}%` }} /><i className="skipped" style={{ width: `${(summary.skipped || 0) / (rules.length || 1) * 100}%` }} /></div><p><span className="ok">{summary.pass || 0} 通过</span><span className="bad">{summary.fail || 0} 不通过</span><span className="warn">{(summary.warning || 0) + (summary.pending || 0)} 待审</span><span>{summary.skipped || 0} 不适用</span></p></div>
         <div className="audit-rule-tools"><div>{[['all', '全部'], ['fail', '不通过'], ['warning', '待审']].map(([value, label]) => <button key={value} className={filter === value ? 'active' : ''} onClick={() => setFilter(value)}>{label}</button>)}</div><label><Search /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索规则…" /></label></div>
         <div className="audit-rules">{drawingGroups.map(([domain, items]) => <RuleGroup key={domain} domain={domain} items={items} collapsed={collapsed.has(domain)} currentKey={current?.rule_key} onToggle={toggleDomain} onSelect={(ruleKey) => { setSelectedRule(ruleKey); setRect(null); setActiveEvidence(-1) }} />)}</div>
         {globalGroup && <div className="audit-global-rules"><RuleGroup domain={globalGroup[0]} items={globalGroup[1]} collapsed={collapsed.has(globalGroup[0])} currentKey={current?.rule_key} onToggle={toggleDomain} onSelect={(ruleKey) => { setSelectedRule(ruleKey); setRect(null); setActiveEvidence(-1) }} /></div>}
       </section>
-      <EvidencePanel current={current} files={pdfFiles} activeEvidence={activeEvidence} jump={jump} rerun={rerun} rerunning={rerunning} />
+      <EvidencePanel current={current} files={previewFiles} activeEvidence={activeEvidence} jump={jump} rerun={rerun} rerunning={rerunning} />
     </div>
   </div>
 }
@@ -363,6 +366,13 @@ function PdfViewer({ files, fileId, onFile, page, onPage, rect }) {
   const [error, setError] = useState('')
   const selected = files.find((file) => file.id === fileId)
 
+  function fitWidth() {
+    const canvas = canvasRef.current
+    const scroller = scrollRef.current
+    if (!canvas || !scroller || !canvas.width) return
+    setZoom(Math.max(.5, Math.min(2, Number(((scroller.clientWidth - 48) / (canvas.width / zoom)).toFixed(2)))))
+  }
+
   useEffect(() => {
     if (!fileId || !canvasRef.current) return undefined
     let cancelled = false
@@ -391,8 +401,8 @@ function PdfViewer({ files, fileId, onFile, page, onPage, rect }) {
   }, [fileId, onPage, page, rect, zoom])
 
   return <section className="audit-pdf-panel">
-    <div className="audit-pdf-tabs">{files.map((file) => <button key={file.id} className={file.id === fileId ? 'active' : ''} onClick={() => { onFile(file.id); onPage(1) }} title={file.path.split(/[\\/]/).pop()}><FileText />{file.path.split(/[\\/]/).pop().replace(/_api\.pdf$/i, '')}</button>)}</div>
-    <div className="audit-pdf-tools"><span><IconButton label="上一页" disabled={page <= 1} onClick={() => onPage(page - 1)}><ChevronLeft /></IconButton><b>{page} / {pages}</b><IconButton label="下一页" disabled={page >= pages} onClick={() => onPage(page + 1)}><ChevronRight /></IconButton></span><span><IconButton label="缩小" onClick={() => setZoom((value) => Math.max(.5, value - .1))}><ZoomOut /></IconButton><b>{Math.round(zoom * 100)}%</b><IconButton label="放大" onClick={() => setZoom((value) => Math.min(2, value + .1))}><ZoomIn /></IconButton></span></div>
+    <div className="audit-pdf-tabs">{files.map((file) => { const name = file.path.split(/[\\/]/).pop(); return <button key={file.id} className={file.id === fileId ? 'active' : ''} onClick={() => { onFile(file.id); onPage(1) }} title={name}><FileText /><span>{file.kind === 'docx' ? '说明书' : name.replace(/_api\.pdf$/i, '')}</span></button> })}</div>
+    <div className="audit-pdf-tools"><span><IconButton label="上一页" disabled={page <= 1} onClick={() => onPage(page - 1)}><ChevronLeft /></IconButton><b>{page} <i>/ {pages}</i></b><IconButton label="下一页" disabled={page >= pages} onClick={() => onPage(page + 1)}><ChevronRight /></IconButton></span><em /><span><IconButton label="缩小" onClick={() => setZoom((value) => Math.max(.5, value - .1))}><ZoomOut /></IconButton><b>{Math.round(zoom * 100)}%</b><IconButton label="放大" onClick={() => setZoom((value) => Math.min(2, value + .1))}><ZoomIn /></IconButton><IconButton label="适应宽度" onClick={fitWidth}><Maximize2 /></IconButton></span></div>
     <div ref={scrollRef} className="audit-canvas-scroll">{selected ? <div className="audit-canvas"><canvas ref={canvasRef} />{box && <span className="audit-highlight" style={box} />}</div> : <p className="audit-muted">没有可预览的 PDF</p>}{error && <p className="audit-error">PDF 加载失败：{error}</p>}</div>
   </section>
 }

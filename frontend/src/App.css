@@ -1029,6 +1029,14 @@ h1 {
   line-height: 1.8;
   color: #1f2328;
 }
+.guide-tech-example {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  line-height: 1.8;
+  color: #1f2328;
+}
 .sample-list {
   display: flex;
   gap: 16px;

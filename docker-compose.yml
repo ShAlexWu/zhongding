@@ -13,7 +13,8 @@ services:
       dockerfile: backend/Dockerfile
     container_name: zhongding-backend
     env_file:
-      - .env
+      - path: .env
+        required: false
     volumes:
       - ./图纸_old:/app/图纸_old
       - ./片段:/app/片段
@@ -27,6 +28,28 @@ services:
     networks:
       - zhongding-net
 
+  audit-backend:
+    build:
+      context: audit_backend
+      dockerfile: Dockerfile
+    container_name: zhongding-audit-backend
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DB_PATH: /data/app.db
+      UPLOAD_DIR: /data/uploads
+      PNG_CACHE_DIR: /data/png-cache
+      TRADEMARK_VLM_PROVIDER: dashscope
+      VLM_MODEL: qwen3.8-flash
+    volumes:
+      - audit-data:/data
+    expose:
+      - "50012"
+    restart: unless-stopped
+    networks:
+      - zhongding-net
+
   frontend:
     build:
       context: frontend
@@ -36,6 +59,7 @@ services:
       - "8004:50009"
     depends_on:
       - backend
+      - audit-backend
     restart: unless-stopped
     networks:
       - zhongding-net
@@ -43,3 +67,6 @@ services:
 networks:
   zhongding-net:
     driver: bridge
+
+volumes:
+  audit-data:

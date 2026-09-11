@@ -1,5 +1,7 @@
 # Python-generated files
 __pycache__/
+.pytest_cache/
+.ruff_cache/
 *.py[oc]
 build/
 dist/
@@ -12,7 +14,9 @@ wheels/
 # start.sh runtime logs/pids, local secrets
 .run/
 .env
+audit_backend/app.db*
+audit_backend/uploads/
+audit_backend/.png_cache/
 
 # Node
 frontend/node_modules/
-

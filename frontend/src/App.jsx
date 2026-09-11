@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import './App.css'
+
+const AuditPage = lazy(() => import('./audit/AuditPage.jsx'))
 
 function pct(x) {
   return (x * 100).toFixed(2) + '%'
@@ -288,7 +290,8 @@ function LoginPage({ onLoggedIn }) {
 export default function App() {
   // 'loading'：正在查会话状态；'in'：已登录；'out'：未登录，展示登录页
   const [authState, setAuthState] = useState('loading')
-  const [activeTab, setActiveTab] = useState('match')
+  const [activeTab, setActiveTab] = useState('audit')
+  const [auditVisited, setAuditVisited] = useState(true)
 
   useEffect(() => {
     fetch('/api/session')
@@ -314,9 +317,15 @@ export default function App() {
   }
 
   return (
-    <div className="page">
+    <div className={`page ${activeTab === 'audit' ? 'page-audit' : ''}`}>
       <AppBrand onLogout={handleLogout} />
       <div className="tabs">
+        <button
+          className={`tab ${activeTab === 'audit' ? 'active' : ''}`}
+          onClick={() => { setAuditVisited(true); setActiveTab('audit') }}
+        >
+          图纸审核
+        </button>
         <button
           className={`tab ${activeTab === 'match' ? 'active' : ''}`}
           onClick={() => setActiveTab('match')}
@@ -336,12 +345,15 @@ export default function App() {
           使用说明
         </button>
       </div>
-      {/* 三个页面都保持挂载，仅切换显隐：切标签不丢失各自的状态与进行中的任务 */}
+      {/* 页面都保持挂载，仅切换显隐：切标签不丢失各自的状态与进行中的任务 */}
       <div style={{ display: activeTab === 'match' ? 'block' : 'none' }}>
         <MatchingPage />
       </div>
       <div style={{ display: activeTab === 'doc' ? 'block' : 'none' }}>
         <InspectionDocPage />
+      </div>
+      <div style={{ display: activeTab === 'audit' ? 'block' : 'none' }}>
+        {auditVisited && <Suspense fallback={<div className="app-loading">正在加载审核工作台…</div>}><AuditPage /></Suspense>}
       </div>
       <div style={{ display: activeTab === 'guide' ? 'block' : 'none' }}>
         <UsageGuidePage />
@@ -359,6 +371,10 @@ function UsageGuidePage() {
         <h2>功能概览</h2>
         <ul className="guide-list">
           <li>
+            <b>图纸审核</b>：上传 6 套图纸的 PDF、API JSON、空间 JSON，以及产品说明书和商标图，执行 40 条可审计规则；
+            结果可查看原文证据、定位图纸区域、重跑单项并导出批注 PDF。
+          </li>
+          <li>
             <b>图纸检索</b>：上传一张局部零件图片（或技术参数图片），系统分别从"图形相似性"和"文本语义接近度"两个维度，
             在图纸知识库中检索最相似的图纸，给出排名前 3 的候选结果，并实时展示 AI 逐图纸比对的完整思考过程与各阶段耗时；
             排名列表中鼠标悬浮在图纸名称上，还能弹出「上传图片 vs 原始 PDF」并排预览，方便核对。
@@ -372,6 +388,16 @@ function UsageGuidePage() {
 
       <section className="guide-section">
         <h2>使用步骤</h2>
+        <div className="guide-subsection">
+          <h3>图纸审核</h3>
+          <ol>
+            <li>下载审核样例 ZIP，解压后一次选择其中 20 个文件上传（本系统不直接上传 ZIP）。</li>
+            <li>进入“图纸审核”，点击“新建审核任务”，确认自动识别的文件类型。</li>
+            <li>填写客户技术要求和修订原因，确认任务名称后开始审核。</li>
+            <li>审核中通过 SSE 自动刷新进度；完成后点击证据可跳到 PDF 对应位置。</li>
+            <li>模型 Key 未配置时，VLM 项会明确降级为 WARNING/dry-run，不会给出真实 PASS。</li>
+          </ol>
+        </div>
         <div className="guide-subsection">
           <h3>图纸检索</h3>
           <ol>
@@ -396,6 +422,17 @@ function UsageGuidePage() {
 
       <section className="guide-section">
         <h2>样例数据下载</h2>
+        <p className="hint">图纸审核完整样例（20 个文件，下载后请先解压）：</p>
+        <p><a className="search-btn guide-audit-download" href="/static/samples/zhongji-v4-audit-sample.zip" download>下载图纸审核样例 ZIP</a></p>
+        <div className="guide-subsection">
+          <h3>客户技术要求示例输入</h3>
+          <pre className="guide-tech-example">{`1.Fork Pocket Top plate 4.0 mm Thk.
+2.Side Walls Inner panel 2.0 mm Thk.
+3.Ventilators Quantity: 2 / each side panel.
+4.The paint suppliers add Gaojing.
+5.Stacking Testing load: 86,400kg/post.
+6.The self-adhesive film decal shall be guaranteed 9 years.`}</pre>
+        </div>
         <p className="hint">可以下载下面几张局部零件图片，直接用于"图纸检索"功能的试用。</p>
         <div className="sample-list">
           {SAMPLE_FILES.map((name) => (

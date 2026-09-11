@@ -172,7 +172,7 @@ prompt_value() {
 
 log "配置部署参数（直接回车 = 使用方括号里的默认值/保留已有值）："
 echo ""
-prompt_value DASHSCOPE_API_KEY "DASHSCOPE_API_KEY（通义千问/DashScope，用于向量化与 QWEN 解析）" "" 1
+prompt_value DASHSCOPE_API_KEY "DASHSCOPE_API_KEY（检索、解析与图纸审核共用；可留空）" "" 1
 prompt_value PADDLEOCR_KEY     "PADDLEOCR_KEY（PaddleOCR-VL 云 API Token，用于「基础解读」）" "" 1
 echo ""
 prompt_value MO_HOST     "MO_HOST（MatrixOne 数据库地址）" "freetier-01.cn-hangzhou.cluster.matrixonecloud.cn" 0
@@ -187,7 +187,10 @@ prompt_value PASSWORD  "PASSWORD（页面登录密码，直接回车则不启用
 echo ""
 
 if [ -z "$(get_env_var DASHSCOPE_API_KEY)" ]; then
-  warn "DASHSCOPE_API_KEY 未设置：图片/文本向量化及 QWEN 解析将不可用。"
+  set_env_var VLM_DRY_RUN "1"
+  warn "DASHSCOPE_API_KEY 未设置：检索模型不可用；图纸审核进入 dry-run，模型项只会给 WARNING，不会产生真实 PASS。"
+else
+  set_env_var VLM_DRY_RUN "0"
 fi
 if [ -z "$(get_env_var USER_NAME)" ] || [ -z "$(get_env_var PASSWORD)" ]; then
   warn "USER_NAME/PASSWORD 未设置：页面将不要求登录即可直接使用。"
@@ -229,6 +232,7 @@ echo ""
 log "部署完成："
 log "  访问地址： http://<服务器IP>:${HOST_PORT}/"
 log "  健康检查： http://<服务器IP>:${HOST_PORT}/health"
+log "  审核健康： http://<服务器IP>:${HOST_PORT}/api/audit/v1/health"
 log "  查看日志： sudo ./deploy.sh logs"
 log "  停止服务： sudo ./deploy.sh stop"
 echo ""

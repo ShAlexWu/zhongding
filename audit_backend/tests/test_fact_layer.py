@@ -5,6 +5,7 @@ import asyncio
 from app.services.doc_parser import ManualDoc
 from app.services.fact_layer import FactLayer
 from app.services.handlers.drawing import h_tot_04
+from app.services.handlers.manual import h_man_03, h_man_05
 from app.services.rule_engine import ProjectContext, rule_by_key
 
 
@@ -117,3 +118,31 @@ def test_exact_part_name_wins_over_cross_drawing_duplicates_and_longer_names() -
     assert bundle.resolutions[0].status == "resolved"
     assert bundle.resolutions[0].label == "F140401_20前端下梁"
     assert [item.value for item in bundle.observations] == [4.0]
+
+
+def test_english_contact_email_is_compared_even_when_ai_omits_it() -> None:
+    source = "7.Contact Email is 158@qq.com"
+    footer = "Please contact jinping.hu@cimc.com or phone +86 769 21667128."
+    ctx = ProjectContext(project_id="contact-email")
+    ctx.manual = ManualDoc(full_text=footer, footer_text=footer)
+    ctx.inputs = {"tech_req": source}
+
+    bundle = asyncio.run(
+        FactLayer(_FakeManualExtractor({"change_checks": []})).extract(ctx)
+    )
+    ctx.fact_bundle = bundle
+    ctx.manual_facts = bundle.manual_facts
+
+    requirement = bundle.requirements[0]
+    assert requirement.attribute == "contact"
+    assert requirement.expected_value == "158@qq.com"
+    assert "MAN-05" in requirement.rule_keys
+
+    man03 = h_man_03(ctx, rule_by_key("MAN-03"))
+    assert man03.verdict == "fail"
+    assert "jinping.hu@cimc.com" in man03.evidence[0]["text"]
+
+    man05 = h_man_05(ctx, rule_by_key("MAN-05"))
+    assert man05.verdict == "fail"
+    assert "158@qq.com" in man05.conclusion
+    assert "jinping.hu@cimc.com" in man05.conclusion

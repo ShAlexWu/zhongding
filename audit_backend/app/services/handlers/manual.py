@@ -19,8 +19,19 @@ def _compact(value: str) -> str:
     return re.sub(r"[\s\-_/]", "", str(value or "")).upper()
 
 
-def _manual_change_value(requirement: str, manual_text: str) -> tuple[str, str] | None:
+def _manual_change_value(
+    requirement: str,
+    manual_text: str,
+    footer_text: str = "",
+) -> tuple[str, str] | None:
     requirement = re.sub(r"^\s*\d+[.)]\s*", "", requirement)
+    expected_email = re.search(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", requirement)
+    if expected_email:
+        actual_emails = re.findall(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", footer_text)
+        if not actual_emails:
+            return "missing", "说明书页脚未找到邮箱"
+        status = "found" if expected_email.group(0).lower() in {v.lower() for v in actual_emails} else "mismatch"
+        return status, footer_text[:400]
     supplier = re.search(
         r"7\.2\.4\s+The paint suppliers are Dowill, KCC, Mega, Chugoku, Kansai, KMK, Haoli or Gaojing\.",
         manual_text,
@@ -252,7 +263,11 @@ def h_man_03(ctx, rule) -> RuleOutcome:  # noqa: ANN001
             )
             evidence_text = str(check.get("evidence") or "")
             if status in {"missing", "uncertain"} and not evidence_text:
-                local_match = _manual_change_value(requirement, manual.full_text)
+                local_match = _manual_change_value(
+                    requirement,
+                    manual.full_text,
+                    manual.footer_text,
+                )
                 if local_match:
                     status, evidence_text = local_match
             verdict = "pass" if status == "found" else "fail" if status in {"missing", "mismatch"} else "warning"
@@ -327,16 +342,40 @@ def h_man_05(ctx, rule) -> RuleOutcome:  # noqa: ANN001
             for value in (item.get("email"), item.get("phone"))
         )
     ]
-    required = (ctx.manual_facts.get("requirements") or {}).get("contacts") or []
+    required = list((ctx.manual_facts.get("requirements") or {}).get("contacts") or [])
+    if ctx.fact_bundle:
+        known = {_compact(value) for item in required for value in item.values() if value}
+        for requirement in ctx.fact_bundle.for_rule("MAN-05"):
+            email = re.search(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", requirement.source_text)
+            if email and _compact(email.group(0)) not in known:
+                required.append({"email": email.group(0)})
+                known.add(_compact(email.group(0)))
+    if required:
+        evidence = [
+            {"type": "input", "text": "客户要求：" + "；".join(
+                str(value) for item in required for value in item.values() if value
+            )},
+            {"type": "doc", "text": footer[:400] or "说明书页脚未找到联系人信息"},
+        ]
+        missing = [
+            item for item in required
+            if not all(_compact(value) in footer_compact for value in item.values() if value)
+        ]
+        if missing:
+            expected = "、".join(str(value) for item in missing for value in item.values() if value)
+            actual = "、".join(re.findall(
+                r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|(?<![\w-])\+?\d(?:[\s()-]*\d){7,}(?![\w-])",
+                footer,
+            )) or "未找到"
+            return RuleOutcome(
+                "fail",
+                f"说明书页脚联系人与客户要求不一致：要求 {expected}；实际 {actual}",
+                evidence,
+            )
+        return RuleOutcome("pass", "说明书页脚联系人与客户要求一致", evidence)
     if contacts:
         evidence = [{"type": "doc", "text": str(item.get("evidence") or footer)[:400]} for item in contacts]
-        if not required:
-            return RuleOutcome("warning", "已提取页脚联系人，但客户未提供更新后的联系人基准", evidence)
-        actual = " ".join(str(item) for item in contacts)
-        missing = [item for item in required if not any(str(v) in actual for v in item.values() if v)]
-        if missing:
-            return RuleOutcome("fail", "说明书联系人与客户要求不一致", evidence)
-        return RuleOutcome("pass", "说明书联系人与客户要求一致", evidence)
+        return RuleOutcome("warning", "已提取页脚联系人，但客户未提供更新后的联系人基准", evidence)
     match = re.search(
         r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|(?<![\w-])\+?\d(?:[\s()-]*\d){7,}(?![\w-])",
         footer,

@@ -13,6 +13,7 @@ logger = get_logger(__name__)
 _SPLIT_RE = re.compile(r"[\n；;。]+|(?<!\d)[,，]|[,，](?!\d)")
 _MM_RE = re.compile(r"(\d+(?:\.\d+)?)\s*mm", re.IGNORECASE)
 _RAL_RE = re.compile(r"RAL\s*(\d{4})", re.IGNORECASE)
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}")
 _INSTANCE_RE = re.compile(r"-\d+$")
 _PART_RE = re.compile(r"^([A-Z]\d{6})[_-]?(.*)$", re.IGNORECASE)
 
@@ -146,6 +147,7 @@ def _split(text: str) -> list[str]:
 
 def _fallback_parse(requirement: RequirementFact) -> None:
     text = requirement.source_text
+    email = _EMAIL_RE.search(text)
     mm = _MM_RE.search(text)
     if mm and re.search(r"板厚|厚度|厚\b|thickness", text, re.IGNORECASE):
         requirement.attribute = "thickness"
@@ -159,8 +161,14 @@ def _fallback_parse(requirement: RequirementFact) -> None:
     if re.search(r"商标|logo", text, re.IGNORECASE):
         requirement.attribute = requirement.attribute or "trademark"
         requirement.rule_keys.extend(["MAN-07", "TM-03"])
-    if re.search(r"公司|客户名称|地址|联系人|电话|邮箱", text, re.IGNORECASE):
+    if email or re.search(
+        r"公司|客户名称|地址|联系人|电话|邮箱|\b(?:contact|e-?mail|phone|telephone|address)\b",
+        text,
+        re.IGNORECASE,
+    ):
         requirement.attribute = requirement.attribute or "contact"
+        if email:
+            requirement.expected_value = requirement.expected_value or email.group(0)
         requirement.rule_keys.extend(["MAN-05", "TM-05"])
     if re.search(r"质保|保修|保证期|guarantee|warranty", text, re.IGNORECASE):
         requirement.attribute = requirement.attribute or "guarantee"
@@ -237,7 +245,10 @@ def _route(attribute: str, text: str) -> list[str]:
         rules.extend(["MAN-06", "DOOR-03", "TM-02"])
     if attribute == "trademark" or "商标" in probe or "logo" in probe:
         rules.extend(["MAN-07", "TM-03"])
-    if attribute == "contact" or any(word in probe for word in ("客户名称", "地址", "联系人")):
+    if attribute == "contact" or any(
+        word in probe
+        for word in ("客户名称", "地址", "联系人", "contact", "email", "e-mail", "phone")
+    ):
         rules.extend(["MAN-05", "TM-05"])
     if attribute == "guarantee" or "质保" in probe:
         rules.append("MAN-08")

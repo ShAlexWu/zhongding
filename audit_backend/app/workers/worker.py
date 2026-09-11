@@ -8,6 +8,7 @@ emits job_events consumed by the SSE endpoint.
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -107,6 +108,95 @@ def _adjudicate_tm01(outcome: VLMOutcome) -> VLMOutcome:
     outcome.verdict = "fail" if "fail" in verdicts else "warning" if "warning" in verdicts else "pass"
     outcome.conclusion = "；".join(conclusions)
     outcome.evidence = evidence or original_evidence
+    return outcome
+
+
+def _adjudicate_tm04(outcome: VLMOutcome, manual) -> VLMOutcome:  # noqa: ANN001
+    expected = manual.extract_ratings() if manual else {}
+    if not expected:
+        return outcome
+    source_text = manual.extract_rating_evidence()
+    raw = outcome.vlm_raw or {}
+    facts = raw.get("facts") if isinstance(raw.get("facts"), dict) else {}
+
+    def number(value) -> float | None:  # noqa: ANN001
+        try:
+            return float(str(value).replace(",", ""))
+        except (TypeError, ValueError):
+            return None
+
+    checks = (
+        ("最大总重", "max_gross", "max_gross_kg"),
+        ("皮重", "tare", "tare_weight_kg"),
+        ("载重", "payload", "payload_kg"),
+    )
+    evidence: list[dict] = []
+    verdicts: list[str] = []
+    details: list[str] = []
+    for checkpoint, field, manual_key in checks:
+        wanted_kg = expected.get(manual_key)
+        wanted_lb = round(wanted_kg * 2.20462262185 / 10) * 10 if wanted_kg is not None else None
+        source_verdicts: list[str] = []
+        values: dict[str, tuple[float | None, float | None]] = {}
+        drawing_evidence: list[dict] = []
+        for source, label in (("marking", "商标图"), ("general", "总图")):
+            source_facts = facts.get(source) if isinstance(facts.get(source), dict) else {}
+            kg = number(source_facts.get(f"{field}_kg"))
+            lb = number(source_facts.get(f"{field}_lb"))
+            drawing = next(
+                (
+                    item for item in outcome.evidence
+                    if str(item.get("text") or "").startswith(f"TM-04 {source} {field}:")
+                ),
+                None,
+            )
+            if drawing:
+                text = str(drawing.get("text") or "")
+                kg_match = re.search(r"([\d,]+(?:\.\d+)?)\s*KGS?\b", text, re.IGNORECASE)
+                lb_match = re.search(r"([\d,]+(?:\.\d+)?)\s*LBS?\b", text, re.IGNORECASE)
+                kg = kg if kg is not None else number(kg_match.group(1) if kg_match else None)
+                lb = lb if lb is not None else number(lb_match.group(1) if lb_match else None)
+            verdict = (
+                "warning" if wanted_kg is None or kg is None or lb is None or drawing is None
+                else "pass" if abs(kg - wanted_kg) <= 1 and abs(lb - wanted_lb) <= 5
+                else "fail"
+            )
+            source_verdicts.append(verdict)
+            values[label] = (kg, lb)
+            if drawing:
+                drawing_evidence.append({
+                    **drawing,
+                    "type": drawing.get("type", "pdf"),
+                    "side": "drawing",
+                    "checkpoint": checkpoint,
+                    "checkpoint_verdict": verdict,
+                })
+        verdict = (
+            "fail" if "fail" in source_verdicts
+            else "warning" if "warning" in source_verdicts
+            else "pass"
+        )
+        verdicts.append(verdict)
+        evidence.append({
+            "type": "doc",
+            "side": "manual",
+            "checkpoint": checkpoint,
+            "checkpoint_verdict": verdict,
+            "text": source_text.get(manual_key) or f"说明书未提取到{checkpoint}",
+        })
+        evidence.extend(drawing_evidence)
+        marking_kg, _ = values["商标图"]
+        general_kg, _ = values["总图"]
+        details.append(
+            f"{checkpoint}：说明书 {wanted_kg:,.0f} kg，"
+            f"商标图 {marking_kg:,.0f} kg，总图 {general_kg:,.0f} kg"
+            if None not in (wanted_kg, marking_kg, general_kg)
+            else f"{checkpoint}：三方数值或定位不完整"
+        )
+
+    outcome.verdict = "fail" if "fail" in verdicts else "warning" if "warning" in verdicts else "pass"
+    outcome.conclusion = "；".join(details)
+    outcome.evidence = evidence
     return outcome
 
 
@@ -336,6 +426,8 @@ class Runner:
         )
         if rule.rule_key == "TM-01":
             outcome = _adjudicate_tm01(outcome)
+        if rule.rule_key == "TM-04":
+            outcome = _adjudicate_tm04(outcome, ctx.manual)
         if rule.rule_key == "TM-06":
             outcome = _adjudicate_tm06(outcome, ctx.manual)
         if rule.rule_key == "TM-01" and outcome.vlm_raw:

@@ -14,7 +14,7 @@ import ijson
 from app.services.doc_parser import ManualDoc, extract_drawing_facts, extract_manual
 from app.services.rule_engine import ProjectContext, resolve_doc_anchor, rule_by_key, run_rule
 from app.services.vlm_client import VLMOutcome
-from app.workers.worker import _adjudicate_tm06
+from app.workers.worker import _adjudicate_tm04, _adjudicate_tm06
 
 ENGINE_KEYS_TO_TEST = [
     "MAN-01", "MAN-03", "MAN-04", "MAN-05", "MAN-06",
@@ -105,6 +105,40 @@ def test_tm06_anchor_extracts_section_9_test_values(real_docx_path) -> None:  # 
     assert '"stacking_test_kg_per_post": 97200.0' in anchor
     assert '"allowable_stacking_load_1_8g_kg": 216000.0' in anchor
     assert '"transverse_racking_test_force_n": 150000.0' in anchor
+
+
+def test_tm04_is_locally_compared_with_manual_and_both_drawings(real_docx_path) -> None:  # noqa: ANN001
+    values = {
+        ("marking", "max_gross"): "30,480 kg / 67,200 lb",
+        ("general", "max_gross"): "30,480 kg / 67,200 lb",
+        ("marking", "tare"): "2,040 kg / 4,500 lb",
+        ("general", "tare"): "2,100 kg / 4,630 lb",
+        ("marking", "payload"): "28,440 kg / 62,700 lb",
+        ("general", "payload"): "28,380 kg / 62,570 lb",
+    }
+    evidence = [
+        {
+            "image_index": image,
+            "text": f"TM-04 {source} {field}: {values[source, field]}",
+        }
+        for field in ("max_gross", "tare", "payload")
+        for image, source in ((1, "marking"), (2, "general"))
+    ]
+    outcome = VLMOutcome(
+        verdict="pass",
+        conclusion="模型原始结论",
+        evidence=evidence,
+        vlm_raw={"facts": {}},
+    )
+
+    result = _adjudicate_tm04(outcome, extract_manual(str(real_docx_path)))
+
+    assert result.verdict == "fail"
+    assert "商标图 2,040 kg" in result.conclusion
+    assert len(result.evidence) == 9
+    assert {item["type"] for item in result.evidence} == {"doc", "pdf"}
+    assert {item["checkpoint"] for item in result.evidence} == {"最大总重", "皮重", "载重"}
+    assert sum(item["type"] == "doc" for item in result.evidence) == 3
 
 
 def test_tm06_is_locally_adjudicated_with_manual_and_same_plate_evidence(real_docx_path) -> None:  # noqa: ANN001

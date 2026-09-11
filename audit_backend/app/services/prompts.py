@@ -91,9 +91,19 @@ TEMPLATES: dict[str, str] = {
     ),
     "tm_weight_plate_value": _tpl(
         "附带的图片按顺序：第 1 张为商标图，第 2 张为总图（000A22G1G 总装配）。"
-        "重点核对重量标数值与说明书、总图是否一致，格式是否正确，同时对照总图中的重量标注。"
-        "基准值：{doc_anchor}（如无基准值请说明）。"
-        "evidence 中的 page 填写对应图片的序号（第几张图片，从 1 起）。"
+        "只提取两张图中 MAX GROSS、TARE、PAYLOAD/NET 的 kg 和 lb 数值，不直接作最终裁决。"
+        "说明书基准值：{doc_anchor}。"
+        "evidence 必须恰好 6 条，每个字段在两张图中各一条；page 填图片序号 1 或 2。"
+        "text 依次以 `TM-04 marking max_gross:`、`TM-04 general max_gross:`、"
+        "`TM-04 marking tare:`、`TM-04 general tare:`、`TM-04 marking payload:`、"
+        "`TM-04 general payload:` 开头。"
+        "facts 必须使用：{"
+        "\"marking\":{\"max_gross_kg\":数值或null,\"max_gross_lb\":数值或null,"
+        "\"tare_kg\":数值或null,\"tare_lb\":数值或null,"
+        "\"payload_kg\":数值或null,\"payload_lb\":数值或null},"
+        "\"general\":{\"max_gross_kg\":数值或null,\"max_gross_lb\":数值或null,"
+        "\"tare_kg\":数值或null,\"tare_lb\":数值或null,"
+        "\"payload_kg\":数值或null,\"payload_lb\":数值或null}}。"
     ),
     "tm_nameplate_customer": _tpl(
         "重点检查铭牌上客户公司名称和地址是否准确、完整。客户信息基准：{doc_anchor}（如无基准值请说明）。"

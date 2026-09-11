@@ -63,6 +63,13 @@ class ManualDoc:
             out["stack_high"] = 8.0
         return out
 
+    def extract_rating_evidence(self) -> dict[str, str]:
+        return {
+            key: " ".join(match.group(0).split())
+            for key, pattern in _RATING_PATTERNS.items()
+            if (match := re.search(pattern, self.full_text, re.IGNORECASE | re.DOTALL))
+        }
+
     def extract_testing_values(self) -> dict[str, float]:
         stacking = re.search(
             r"\bStacking\b.{0,160}?Testing\s+load\s*:\s*([\d,]+)\s*kg\s*/\s*post",

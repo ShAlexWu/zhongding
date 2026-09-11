@@ -221,6 +221,8 @@ def test_prompts_declare_tm01_crop_order_and_tm04_inputs() -> None:
     tm04 = build_prompt("tm_weight_plate_value", "规则标题", "基准")
     assert "第 1 张为商标图" in tm04
     assert "第 2 张为总图" in tm04
+    assert "evidence 必须恰好 6 条" in tm04
+    assert '"max_gross_kg"' in tm04
 
 
 def test_tm01_real_path_sends_rendered_crop_images() -> None:

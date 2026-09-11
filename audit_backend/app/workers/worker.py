@@ -43,7 +43,9 @@ def _missing_baseline_note(rule, missing: list[str], ctx, anchor: str) -> str:  
     anchor_expr = (rule.params or {}).get("doc_anchor", "")
     if "manual" in rule.target_files and (ctx.manual is None or not anchor.strip()):
         problems.append("说明书基准缺失")
-    if "input:tech_req" in anchor_expr and not any(
+    if "客户名称与地址抽取后注入" in anchor_expr and not anchor.strip():
+        problems.append("客户名称/地址基准未提供")
+    elif "input:tech_req" in anchor_expr and not any(
         str(ctx.inputs.get(key) or "").strip() for key in ("tech_req", "new_material")
     ):
         problems.append("客户技术要求未提供")
@@ -196,6 +198,34 @@ def _adjudicate_tm04(outcome: VLMOutcome, manual) -> VLMOutcome:  # noqa: ANN001
 
     outcome.verdict = "fail" if "fail" in verdicts else "warning" if "warning" in verdicts else "pass"
     outcome.conclusion = "；".join(details)
+    outcome.evidence = evidence
+    return outcome
+
+
+def _adjudicate_tm05(outcome: VLMOutcome) -> VLMOutcome:
+    raw = outcome.vlm_raw or {}
+    facts = raw.get("facts") if isinstance(raw.get("facts"), dict) else {}
+    verdicts: list[str] = []
+    conclusions: list[str] = []
+    evidence: list[dict] = []
+    for field, label in (("customer_name", "客户名称"), ("customer_address", "客户地址")):
+        fact = facts.get(field) if isinstance(facts.get(field), dict) else {}
+        selected = [
+            item for item in outcome.evidence
+            if str(item.get("text") or "").startswith(f"TM-05 {field}:")
+        ]
+        verdict = str(fact.get("verdict") or "warning").lower()
+        if verdict not in {"pass", "fail", "warning"} or not selected:
+            verdict = "warning"
+        verdicts.append(verdict)
+        detail = str(fact.get("conclusion") or "").strip()
+        conclusions.append(f"{label}：{detail or '模型未返回可核验的字段结论'}")
+        evidence.extend(
+            {**item, "checkpoint": label, "checkpoint_verdict": verdict}
+            for item in selected
+        )
+    outcome.verdict = "fail" if "fail" in verdicts else "warning" if "warning" in verdicts else "pass"
+    outcome.conclusion = "；".join(conclusions)
     outcome.evidence = evidence
     return outcome
 
@@ -428,6 +458,8 @@ class Runner:
             outcome = _adjudicate_tm01(outcome)
         if rule.rule_key == "TM-04":
             outcome = _adjudicate_tm04(outcome, ctx.manual)
+        if rule.rule_key == "TM-05":
+            outcome = _adjudicate_tm05(outcome)
         if rule.rule_key == "TM-06":
             outcome = _adjudicate_tm06(outcome, ctx.manual)
         if rule.rule_key == "TM-01" and outcome.vlm_raw:

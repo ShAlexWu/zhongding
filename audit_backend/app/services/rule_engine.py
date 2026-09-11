@@ -242,6 +242,18 @@ def resolve_doc_anchor(ctx: ProjectContext, anchor_expr: str) -> str:
     if "doc:section.9.testing" in expr and manual:
         values = manual.extract_testing_values()
         return "试验基准: " + json.dumps(values, ensure_ascii=False) if values else ""
+    if "客户名称与地址抽取后注入" in expr:
+        customer_text = "；".join(
+            str(ctx.inputs.get(key) or "").strip()
+            for key in ("tech_req", "new_material")
+            if str(ctx.inputs.get(key) or "").strip()
+        )
+        identity = [
+            part.strip()
+            for part in re.split(r"[;；\r\n]+", customer_text)
+            if re.search(r"客户(?:公司)?名称|公司名称|客户地址|\b(?:customer|company)\s+name\b|\baddress\s*[:：=]", part, re.IGNORECASE)
+        ]
+        return "客户名称/地址基准: " + "；".join(identity) if identity else ""
     if "input:tech_req" in expr:
         customer_text = (
             ctx.fact_bundle.customer_text

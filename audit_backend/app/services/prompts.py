@@ -106,7 +106,14 @@ TEMPLATES: dict[str, str] = {
         "\"payload_kg\":数值或null,\"payload_lb\":数值或null}}。"
     ),
     "tm_nameplate_customer": _tpl(
-        "重点检查铭牌上客户公司名称和地址是否准确、完整。客户信息基准：{doc_anchor}（如无基准值请说明）。"
+        "只检查铭牌上的客户公司名称和地址是否与基准准确、完整地一致。"
+        "不得检查或评价板材厚度、油漆及供应商、质保期、重量等其他客户技术要求。"
+        "客户信息基准：{doc_anchor}（缺少名称或地址基准时只能判 warning）。"
+        "facts 必须使用：{\"customer_name\":{\"expected\":\"基准值\",\"actual\":\"图中值\","
+        "\"verdict\":\"pass|fail|warning\",\"conclusion\":\"仅说明名称核对结果\"},"
+        "\"customer_address\":{\"expected\":\"基准值\",\"actual\":\"图中值\","
+        "\"verdict\":\"pass|fail|warning\",\"conclusion\":\"仅说明地址核对结果\"}}。"
+        "名称和地址的 evidence.text 分别以 `TM-05 customer_name:` 和 `TM-05 customer_address:` 开头。"
     ),
     "tm_nameplate_test_values": _tpl(
         "只检查标题为 CSC SAFETY APPROVAL 的同一块铭牌，不能使用外部重量标或其他文字补全。"

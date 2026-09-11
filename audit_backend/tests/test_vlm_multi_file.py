@@ -179,6 +179,58 @@ def test_tm03_with_tech_req_keeps_model_verdict() -> None:
     assert "客户技术要求未提供" not in (row.conclusion or "")
 
 
+def test_tm05_ignores_requirements_unrelated_to_customer_identity() -> None:
+    class UnexpectedVLM:
+        async def call_files(self, **_kwargs) -> VLMOutcome:  # noqa: ANN003
+            raise AssertionError("TM-05 must not call the model without a customer name/address baseline")
+
+    with TestClient(app):
+        pid = _make_project(
+            "tm05scope",
+            tech_req=(
+                "Fork Pocket Top plate 4.0 mm Thk.; paint suppliers add Gaojing; "
+                "self-adhesive film decal guaranteed 9 years"
+            ),
+        )
+
+    asyncio.run(Runner(vlm_client=UnexpectedVLM()).run_single(pid, "TM-05"))  # type: ignore[arg-type]
+    session = SessionLocal()
+    try:
+        row = session.query(RuleResult).filter_by(project_id=pid, rule_key="TM-05").one()
+        assert row.verdict == "warning"
+        assert "客户名称/地址基准未提供" in (row.conclusion or "")
+        assert row.vlm_raw is None
+    finally:
+        session.close()
+
+
+def test_tm05_rejects_model_verdicts_outside_name_and_address() -> None:
+    class OffScopeVLM:
+        async def call_files(self, **kwargs) -> VLMOutcome:  # noqa: ANN003
+            assert "4.0 mm" not in kwargs["doc_anchor"]
+            return VLMOutcome(
+                verdict="fail",
+                conclusion="板材厚度、油漆供应商和质保期未体现",
+                vlm_raw={"facts": {"customer_name": "GVCT", "customer_address": "London"}},
+            )
+
+    with TestClient(app):
+        pid = _make_project(
+            "tm05guard",
+            tech_req="客户名称 GVCT；客户地址 London；Fork Pocket Top plate 4.0 mm Thk.",
+        )
+
+    asyncio.run(Runner(vlm_client=OffScopeVLM()).run_single(pid, "TM-05"))  # type: ignore[arg-type]
+    session = SessionLocal()
+    try:
+        row = session.query(RuleResult).filter_by(project_id=pid, rule_key="TM-05").one()
+        assert row.verdict == "warning"
+        assert "客户名称" in (row.conclusion or "")
+        assert all(word not in (row.conclusion or "") for word in ("板材", "油漆", "质保"))
+    finally:
+        session.close()
+
+
 def test_all_dependencies_missing_finishes_as_manual_review() -> None:
     """No files is a terminal manual-review result, never a pending item."""
     with TestClient(app):

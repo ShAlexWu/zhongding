@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import time
 from pathlib import Path
 
@@ -41,40 +40,6 @@ def test_health() -> None:
         assert body["data"]["db_writable"] is True
         assert body["data"]["vlm_configured"] is False  # key removed in conftest
         assert body["data"]["vlm_dry_run"] is True
-
-
-def test_internal_model_key_update_requires_token(monkeypatch) -> None:
-    from app.api.v1 import health as health_api
-    from app.core.config import settings
-
-    original_key = settings.dashscope_api_key
-    original_dry_run = settings.vlm_dry_run
-    monkeypatch.setenv("PASSWORD", "test-internal-token")
-    try:
-        with TestClient(app) as client:
-            denied = client.put("/api/v1/internal/model-key", json={"api_key": "example-api-key"})
-            assert denied.status_code == 403
-
-            runner = health_api._runner
-            assert runner is not None
-            runner.vlm._client = object()
-            updated = client.put(
-                "/api/v1/internal/model-key",
-                json={"api_key": "example-api-key"},
-                headers={
-                    "X-Internal-Config-Token": hashlib.sha256(
-                        b"test-internal-token"
-                    ).hexdigest()
-                },
-            )
-            assert updated.status_code == 200
-            assert updated.json()["data"] == {"configured": True, "runtime_only": True}
-            assert settings.dashscope_api_key == "example-api-key"
-            assert settings.vlm_dry_run is False
-            assert runner.vlm._client is None
-    finally:
-        settings.dashscope_api_key = original_key
-        settings.vlm_dry_run = original_dry_run
 
 
 def test_rulesets_contract() -> None:

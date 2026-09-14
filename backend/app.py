@@ -9,11 +9,9 @@
 """
 
 import dataclasses
-import hashlib
 import json
 import os
 from typing import List, Optional
-from urllib import error as urlerror, request as urlrequest
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -90,10 +88,6 @@ class MatchRequest(BaseModel):
     text_weight: Optional[float] = None
 
 
-class ModelKeyRequest(BaseModel):
-    api_key: str
-
-
 # ---------------------------------------------------------------------------
 # 登录 / 登出 / 会话查询
 # ---------------------------------------------------------------------------
@@ -126,42 +120,6 @@ def session_status(request: Request):
 def verify_session():
     """Nginx auth_request target; the middleware performs the actual check."""
     return Response(status_code=204)
-
-
-@app.get("/api/settings/model-key")
-def model_key_status():
-    if not auth.auth_enabled():
-        raise HTTPException(status_code=403, detail="启用登录后才能在网页配置模型 Key")
-    return {"configured": bool(config.DASHSCOPE_API_KEY), "runtime_only": True}
-
-
-@app.put("/api/settings/model-key")
-def update_model_key(payload: ModelKeyRequest):
-    if not auth.auth_enabled():
-        raise HTTPException(status_code=403, detail="启用登录后才能在网页配置模型 Key")
-    api_key = payload.api_key.strip()
-    if not 8 <= len(api_key) <= 512:
-        raise HTTPException(status_code=400, detail="请输入有效的模型 Key")
-
-    audit_request = urlrequest.Request(
-        f"{config.AUDIT_BACKEND_URL}/api/v1/internal/model-key",
-        data=json.dumps({"api_key": api_key}).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "X-Internal-Config-Token": hashlib.sha256(config.AUTH_PASSWORD.encode()).hexdigest(),
-        },
-        method="PUT",
-    )
-    try:
-        with urlrequest.urlopen(audit_request, timeout=5):  # noqa: S310 - fixed service URL
-            pass
-    except (urlerror.HTTPError, urlerror.URLError, TimeoutError) as exc:
-        raise HTTPException(status_code=502, detail="审核服务 Key 同步失败，请稍后重试") from exc
-
-    # ponytail: 网页录入的密钥只驻留当前进程；需要跨重启保存时接专用密钥管理服务。
-    config.DASHSCOPE_API_KEY = api_key
-    os.environ["DASHSCOPE_API_KEY"] = api_key
-    return {"configured": True, "runtime_only": True}
 
 
 def _score_to_dict(rank: int, s: matcher.DiagramScore) -> dict:

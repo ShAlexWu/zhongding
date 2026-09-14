@@ -121,11 +121,6 @@ class VLMClient:
     def configured(self) -> bool:
         return bool(self.settings.dashscope_api_key)
 
-    def set_api_key(self, api_key: str) -> None:
-        self.settings.dashscope_api_key = api_key
-        self.settings.vlm_dry_run = False
-        self._client = None
-
     def _get_client(self) -> AsyncOpenAI:
         if self._client is None:
             self._client = AsyncOpenAI(

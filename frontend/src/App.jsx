@@ -203,8 +203,8 @@ function MatchingPage() {
   )
 }
 
-// 页面顶部品牌区：logo + 标题 + 副标题；登录后额外带一个退出登录按钮
-function AppBrand({ onLogout }) {
+// 页面顶部品牌区：logo + 标题 + 副标题；登录后额外带配置与退出按钮
+function AppBrand({ onLogout, onConfigureKey }) {
   return (
     <div className="app-brand">
       <div className="app-brand-left">
@@ -215,11 +215,72 @@ function AppBrand({ onLogout }) {
         </div>
       </div>
       {onLogout && (
-        <button className="logout-btn" onClick={onLogout}>
-          退出登录
-        </button>
+        <div className="app-brand-actions">
+          <button className="logout-btn model-key-btn" onClick={onConfigureKey}>模型 Key</button>
+          <button className="logout-btn" onClick={onLogout}>退出登录</button>
+        </div>
       )}
     </div>
+  )
+}
+
+function ModelKeyDialog({ onClose, onSaved }) {
+  const dialogRef = useRef(null)
+  const [apiKey, setApiKey] = useState('')
+  const [configured, setConfigured] = useState(null)
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    const dialog = dialogRef.current
+    dialog?.showModal()
+    fetch('/api/settings/model-key')
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error('无法读取配置状态')))
+      .then((data) => setConfigured(Boolean(data.configured)))
+      .catch((err) => setError(err.message))
+    return () => dialog?.close()
+  }, [])
+
+  async function handleSubmit(event) {
+    event.preventDefault()
+    const value = apiKey.trim()
+    if (value.length < 8) {
+      setError('请输入有效的模型 Key')
+      return
+    }
+    setSaving(true)
+    setError('')
+    try {
+      const response = await fetch('/api/settings/model-key', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ api_key: value }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.detail || `配置失败（HTTP ${response.status}）`)
+      setApiKey('')
+      onSaved()
+    } catch (err) {
+      setError(err.message)
+      setSaving(false)
+    }
+  }
+
+  return (
+    <dialog ref={dialogRef} className="model-key-dialog" onCancel={(event) => { event.preventDefault(); if (!saving) onClose() }} onClick={(event) => { if (event.target === event.currentTarget && !saving) onClose() }}>
+      <h2>配置模型 Key</h2>
+      <p className="hint">用于图纸检索、文档解析和图纸审核。Key 不会返回前端或写入浏览器存储。</p>
+      {configured !== null && <p className={`model-key-status ${configured ? 'configured' : ''}`}>当前状态：{configured ? '已录入（未验证有效性）' : '未配置'}</p>}
+      <form className="model-key-form" onSubmit={handleSubmit}>
+        <label>DashScope API Key<input type="password" autoFocus autoComplete="new-password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} disabled={saving} /></label>
+        <small>网页更新仅在当前服务运行期间有效；重启后恢复服务器部署配置。</small>
+        {error && <div className="error">{error}</div>}
+        <div className="model-key-actions">
+          <button type="button" className="logout-btn" onClick={onClose} disabled={saving}>取消</button>
+          <button type="submit" className="search-btn" disabled={saving || !apiKey.trim()}>{saving ? '保存中…' : '保存并应用'}</button>
+        </div>
+      </form>
+    </dialog>
   )
 }
 
@@ -292,6 +353,7 @@ export default function App() {
   const [authState, setAuthState] = useState('loading')
   const [activeTab, setActiveTab] = useState('audit')
   const [auditVisited, setAuditVisited] = useState(true)
+  const [keyDialogOpen, setKeyDialogOpen] = useState(false)
 
   useEffect(() => {
     fetch('/api/session')
@@ -318,7 +380,7 @@ export default function App() {
 
   return (
     <div className={`page ${activeTab === 'audit' ? 'page-audit' : ''}`}>
-      <AppBrand onLogout={handleLogout} />
+      <AppBrand onLogout={handleLogout} onConfigureKey={() => setKeyDialogOpen(true)} />
       <div className="tabs">
         <button
           className={`tab ${activeTab === 'audit' ? 'active' : ''}`}
@@ -358,6 +420,7 @@ export default function App() {
       <div style={{ display: activeTab === 'guide' ? 'block' : 'none' }}>
         <UsageGuidePage />
       </div>
+      {keyDialogOpen && <ModelKeyDialog onClose={() => setKeyDialogOpen(false)} onSaved={() => window.location.reload()} />}
     </div>
   )
 }

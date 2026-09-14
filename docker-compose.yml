@@ -15,6 +15,8 @@ services:
     env_file:
       - path: .env
         required: false
+    environment:
+      AUDIT_BACKEND_URL: http://audit-backend:50012
     volumes:
       - ./图纸_old:/app/图纸_old
       - ./片段:/app/片段

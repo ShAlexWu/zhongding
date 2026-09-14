@@ -34,6 +34,7 @@ AUTH_PASSWORD = os.getenv("PASSWORD", "")
 # DashScope（百炼）模型配置
 # ---------------------------------------------------------------------------
 DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
+AUDIT_BACKEND_URL = os.getenv("AUDIT_BACKEND_URL", "http://127.0.0.1:50012").rstrip("/")
 
 IMAGE_EMBEDDING_MODEL = "qwen3-vl-embedding"
 TEXT_EMBEDDING_MODEL = "text-embedding-v4"

@@ -25,7 +25,7 @@ def _load_dotenv() -> None:
             os.environ[key] = value
 
 
-@dataclass(frozen=True)
+@dataclass
 class Settings:
     data_dir: Path
     db_path: Path

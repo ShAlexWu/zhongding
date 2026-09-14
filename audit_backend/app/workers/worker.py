@@ -314,6 +314,11 @@ class Runner:
         self.fact_layer = FactLayer(ManualFactExtractor(self.vlm))
         self._loop_task: asyncio.Task | None = None
 
+    def set_api_key(self, api_key: str) -> None:
+        self.vlm.set_api_key(api_key)
+        if self.trademark_vlm is not self.vlm:
+            self.trademark_vlm.set_api_key(api_key)
+
     def start(self) -> None:
         if self._loop_task is None or self._loop_task.done():
             self._loop_task = asyncio.create_task(self._run_loop())

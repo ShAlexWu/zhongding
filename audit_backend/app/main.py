@@ -38,6 +38,7 @@ async def lifespan(_app: FastAPI):
         session.close()
     runner = Runner()
     runner.start()
+    health.set_runner(runner)
     projects.set_runner(runner)
     rules.set_runner(runner)
     yield

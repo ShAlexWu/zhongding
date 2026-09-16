@@ -326,7 +326,7 @@ function Review({ projectId, onBack }) {
       <button className="audit-back" onClick={onBack}><ArrowLeft />返回任务列表</button><i />
       <div className="audit-review-title"><h2>{project.name}</h2><span>{formatDate(project.created_at)}</span></div>
       <StatusBadge value={project.status} />
-      <button className="audit-btn secondary export" onClick={report}><Download />导出批注 PDF</button>
+      <button className="audit-btn secondary export" onClick={report}><Download />导出审核结果</button>
     </header>
     {error && <div className="audit-error"><AlertCircle />{error}</div>}
     <div className="audit-review-grid">
